@@ -1,0 +1,9 @@
+lane :test do
+  qawolf(
+    file_path: "./fastlane/fastlane-test-app-debug.apk"
+  )
+  # upload_to_qawolf(
+  #   qawolf_api_key: ENV["QAWOLF_API_KEY"],
+  #   # file_path: "./fastlane/fastlane-test-app-debug.apk"
+  # )
+end

@@ -1,0 +1,9 @@
+{
+  "rubyLsp.rubyVersionManager": {
+    "identifier": "asdf"
+  },
+  "rubyLsp.formatter": "rubocop",
+  "rubyLsp.linters": [
+    "rubocop"
+  ]
+}
