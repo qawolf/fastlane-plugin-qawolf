@@ -34,7 +34,8 @@ module Fastlane
       # +qawolf_api_key+:: QA Wolf API key
       # +qawolf_base_url+:: QA Wolf API base URL
       # +file_path+:: Path to the file to be uploaded.
-      def self.upload_file(qawolf_api_key, qawolf_base_url, file_path)
+      # +filename+:: Optional filename to use instead of the file's basename.
+      def self.upload_file(qawolf_api_key, qawolf_base_url, file_path, filename = nil)
         file_content = File.open(file_path, "rb")
 
         headers = {
@@ -42,7 +43,7 @@ module Fastlane
           content_type: "application/octet-stream"
         }
 
-        signed_url, playground_file_location = get_signed_url(qawolf_api_key, qawolf_base_url, File.basename(file_path))
+        signed_url, playground_file_location = get_signed_url(qawolf_api_key, qawolf_base_url, filename || File.basename(file_path))
 
         RestClient.put(signed_url, file_content, headers)
 

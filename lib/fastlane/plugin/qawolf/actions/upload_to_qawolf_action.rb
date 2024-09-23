@@ -16,12 +16,13 @@ module Fastlane
         qawolf_api_key = params[:qawolf_api_key] # Required
         qawolf_base_url = params[:qawolf_base_url]
         file_path = params[:file_path] || default_file_path
+        filename = params[:filename]
 
         validate_file_path(file_path)
 
         UI.message("🐺 Uploading to QA Wolf...")
 
-        playground_file_location = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path)
+        playground_file_location = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, filename)
 
         ENV["QAWOLF_PLAYGROUND_FILE_LOCATION"] = playground_file_location
 
@@ -95,6 +96,10 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :file_path,
                                        description: "Path to the app file",
                                        optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :filename,
+                                       description: "Optional uploaded filename to use instead of the original filename",
+                                       optional: true,
                                        type: String)
         ]
       end
@@ -111,7 +116,8 @@ module Fastlane
           'upload_to_qawolf',
           'upload_to_qawolf(
             qawolf_api_key: ENV["QAWOLF_API_KEY"],
-            file_path: "path_to_apk_or_ipa_file"
+            file_path: "/path_to/app.apk",
+            filename: "custom_filename.apk"
            )'
         ]
       end
