@@ -42,6 +42,8 @@ module Fastlane
 
         run_id = Helper::QawolfHelper.notify_deploy(qawolf_api_key, qawolf_base_url, options)
 
+        ENV["QAWOLF_RUN_ID"] = run_id
+
         UI.success("🐺 QA Wolf triggered run: #{run_id}")
         UI.success("🐺 Setting environment variable QAWOLF_RUN_ID = #{run_id}")
 
