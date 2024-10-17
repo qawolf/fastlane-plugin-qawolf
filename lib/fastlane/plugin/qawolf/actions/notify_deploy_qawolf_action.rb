@@ -13,15 +13,6 @@ module Fastlane
       def self.run(params)
         qawolf_api_key = params[:qawolf_api_key] # Required
         qawolf_base_url = params[:qawolf_base_url]
-        run_input_path = params[:run_input_path] || Actions.lane_context[SharedValues::QAWOLF_RUN_INPUT_PATH]
-
-        if run_input_path.nil?
-          UI.user_error!("🐺 No run input path found. Please run the `upload_to_qawolf` action first or set the `run_input_path` option.")
-        end
-
-        if params[:run_input_path].nil? == false && Actions.lane_context[SharedValues::QAWOLF_RUN_INPUT_PATH].nil? == false
-          UI.important("🐺 Both `run_input_path` and `QAWOLF_RUN_INPUT_PATH` are set. Using `run_input_path`.")
-        end
 
         UI.message("🐺 Calling QA Wolf deploy success webhook...")
 
@@ -36,7 +27,7 @@ module Fastlane
           hosting_service: params[:hosting_service],
           sha: params[:sha],
           variables: variables.merge({
-            RUN_INPUT_PATH: run_input_path
+            RUN_INPUT_PATH: run_input_path(params)
           })
         }
 
@@ -48,6 +39,14 @@ module Fastlane
         UI.success("🐺 Setting environment variable QAWOLF_RUN_ID = #{run_id}")
 
         Actions.lane_context[SharedValues::QAWOLF_RUN_ID] = run_id
+      end
+
+      def self.run_input_path(params)
+        if params[:run_input_path].nil?
+          UI.user_error!("🐺 No run input path found. Please run the `upload_to_qawolf` action first or set the `run_input_path` option.")
+        end
+
+        return params[:run_input_path]
       end
 
       def self.description
