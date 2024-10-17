@@ -4,10 +4,8 @@ lane :test do
   )
   notify_deploy_qawolf(
     deployment_type: "android",
-    run_input_path: "bad.apk",
     variables: {
       HELLO: "WORLD",
-      RUN_INPUT_PATH: "bad123.apk"
     }
   )
 end
