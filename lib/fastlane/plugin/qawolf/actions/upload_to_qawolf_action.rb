@@ -5,7 +5,7 @@ require_relative '../helper/qawolf_helper'
 module Fastlane
   module Actions
     module SharedValues
-      QAWOLF_PLAYGROUND_FILE_LOCATION = :QAWOLF_PLAYGROUND_FILE_LOCATION
+      QAWOLF_RUN_INPUT_PATH = :QAWOLF_RUN_INPUT_PATH
     end
 
     # Casing is important for the action name!
@@ -22,14 +22,14 @@ module Fastlane
 
         UI.message("🐺 Uploading to QA Wolf...")
 
-        playground_file_location = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, filename)
+        run_input_path = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, filename)
 
-        ENV["QAWOLF_PLAYGROUND_FILE_LOCATION"] = playground_file_location
+        ENV["QAWOLF_RUN_INPUT_PATH"] = run_input_path
 
-        UI.success("🐺 Uploaded #{file_path} to QA Wolf successfully. Playground file location: #{playground_file_location}")
-        UI.success("🐺 Setting environment variable QAWOLF_PLAYGROUND_FILE_LOCATION = #{playground_file_location}")
+        UI.success("🐺 Uploaded #{file_path} to QA Wolf successfully. Run input path: #{run_input_path}")
+        UI.success("🐺 Setting environment variable QAWOLF_RUN_INPUT_PATH = #{run_input_path}")
 
-        Actions.lane_context[SharedValues::QAWOLF_PLAYGROUND_FILE_LOCATION] = playground_file_location
+        Actions.lane_context[SharedValues::QAWOLF_RUN_INPUT_PATH] = run_input_path
       end
 
       # Validate file_path.
@@ -45,7 +45,7 @@ module Fastlane
       end
 
       def self.description
-        "Fastlane plugin for QA Wolf integration."
+        "Fastlane plugin for QA Wolf integration to upload executable artifacts."
       end
 
       def self.authors
@@ -58,7 +58,7 @@ module Fastlane
 
       def self.output
         [
-          ['QAWOLF_PLAYGROUND_FILE_LOCATION', 'Uploaded file location in playgrounds.']
+          ['QAWOLF_RUN_INPUT_PATH', 'Uploaded file location for the executable artifact.']
         ]
       end
 
