@@ -6,7 +6,7 @@ This project is a [_fastlane_](https://github.com/fastlane/fastlane) plugin. To 
 
 ```
 # Add this to your Gemfile
-gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf"
+gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", branch: "main"
 ```
 
 ## About qawolf
