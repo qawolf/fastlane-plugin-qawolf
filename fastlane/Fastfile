@@ -5,7 +5,7 @@ lane :test do
   notify_deploy_qawolf(
     deployment_type: "android",
     variables: {
-      HELLO: "WORLD",
+      HELLO: "WORLD"
     }
   )
 end
