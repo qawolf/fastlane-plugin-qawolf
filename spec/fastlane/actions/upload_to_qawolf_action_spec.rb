@@ -6,7 +6,7 @@ describe Fastlane::Actions::UploadToQawolfAction do
     let(:signed_url_response) do
       {
         signedUrl: "http://signed_url",
-        playgroundFileLocation: "playground_file_location"
+        playgroundFileLocation: "run_input_path"
       }
     end
     let(:params) do

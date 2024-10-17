@@ -9,6 +9,7 @@ module Fastlane
     class QawolfHelper
       BASE_URL = "https://app.qawolf.com"
       SIGNED_URL_ENDPOINT = "/api/v0/run-inputs-executables-signed-urls"
+      WEBHOOK_DEPLOY_SUCCESS_ENDPOINT = "/api/webhooks/deploy_success"
 
       def self.get_signed_url(qawolf_api_key, qawolf_base_url, filename)
         headers = {
@@ -29,7 +30,7 @@ module Fastlane
         ]
       end
 
-      # Uploads file to BrowserStack
+      # Uploads file to QA Wolf
       # Params :
       # +qawolf_api_key+:: QA Wolf API key
       # +qawolf_base_url+:: QA Wolf API base URL
@@ -43,11 +44,11 @@ module Fastlane
           content_type: "application/octet-stream"
         }
 
-        signed_url, playground_file_location = get_signed_url(qawolf_api_key, qawolf_base_url, filename || File.basename(file_path))
+        signed_url, run_input_path = get_signed_url(qawolf_api_key, qawolf_base_url, filename || File.basename(file_path))
 
         RestClient.put(signed_url, file_content, headers)
 
-        return playground_file_location
+        return run_input_path
       rescue RestClient::ExceptionWithResponse => e
         begin
           error_response = e.response.to_s
@@ -58,6 +59,65 @@ module Fastlane
         UI.user_error!("App upload failed!!! Reason : #{error_response}")
       rescue StandardError => e
         UI.user_error!("App upload failed!!! Reason : #{e.message}")
+      end
+
+      def self.notify_deploy_body(options)
+        {
+          'branch' => options[:branch],
+          'commit_url' => options[:commit_url],
+          'deduplication_key' => options[:deduplication_key],
+          'deployment_type' => options[:deployment_type],
+          'deployment_url' => options[:deployment_url],
+          'hosting_service' => options[:hosting_service],
+          'sha' => options[:sha],
+          'variables' => options[:variables]
+        }.to_json
+      end
+
+      def self.process_notify_response(response)
+        response_json = JSON.parse(response.to_s)
+
+        results = response_json["results"]
+
+        failed_trigger = results.find { |result| result["failure_reason"].nil? == false }
+        success_trigger = results.find { |result| result["created_suite_id"].nil? == false }
+
+        if failed_trigger.nil? && success_trigger.nil?
+          raise "no matched trigger, reach out to QA Wolf support"
+        elsif failed_trigger.nil? == false
+          raise failed_trigger["failure_reason"]
+        end
+
+        return success_trigger["created_suite_id"]
+      end
+
+      # Triggers QA Wolf deploy success webhook to start test runs.
+      # Params :
+      # +qawolf_api_key+:: QA Wolf API key
+      # +qawolf_base_url+:: QA Wolf API base URL
+      # +options+:: Options hash containing deployment details.
+      def self.notify_deploy(qawolf_api_key, qawolf_base_url, options)
+        headers = {
+          authorization: "Bearer #{qawolf_api_key}",
+          user_agent: "qawolf_fastlane_plugin",
+          content_type: "application/json"
+        }
+
+        url = URI.join(qawolf_base_url || BASE_URL, WEBHOOK_DEPLOY_SUCCESS_ENDPOINT)
+
+        response = RestClient.post(url.to_s, notify_deploy_body(options), headers)
+
+        return process_notify_response(response)
+      rescue RestClient::ExceptionWithResponse => e
+        begin
+          error_response = e.response.to_s
+        rescue StandardError
+          error_response = "Internal server error"
+        end
+        # Give error if request failed.
+        UI.user_error!("Failed to notify deploy!!! Request failed. Reason : #{error_response}")
+      rescue StandardError => e
+        UI.user_error!("Failed to notify deploy!!! Something went wrong. Reason : #{e.message}")
       end
     end
   end

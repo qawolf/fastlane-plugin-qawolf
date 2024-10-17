@@ -1,10 +1,11 @@
 lane :test do
-  qawolf(
-    file_path: "./fastlane/fastlane-test-app-debug.apk",
-    filename: "app.apk"
+  upload_to_qawolf(
+    file_path: "./fastlane/fastlane-test-app-debug.apk"
   )
-  # upload_to_qawolf(
-  #   qawolf_api_key: ENV["QAWOLF_API_KEY"],
-  #   file_path: "./fastlane/fastlane-test-app-debug.apk"
-  # )
+  notify_deploy_qawolf(
+    deployment_type: "android",
+    variables: {
+      HELLO: "WORLD"
+    }
+  )
 end
