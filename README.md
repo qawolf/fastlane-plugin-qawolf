@@ -15,6 +15,9 @@ Fastlane plugin for QA Wolf integration.
 
 Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated testing. Optionally triggers a test run on QA Wolf.
 
+> [!CAUTION]
+> To ensure QA Wolf tests target the correct app build and help debugging issues, we require uploaded filenames to be unique in some way. The example below uses the git commit hash, but you can use another unique identifier such as the app version number if you wish.
+
 > [!IMPORTANT]
 > Testing iOS apps (IPA) on QA Wolf is not yet available.
 
@@ -24,40 +27,56 @@ Check out the [example `Fastfile`](fastlane/Fastfile) to see how to use this plu
 
 ```ruby
 lane :build do
-  # Step 1: Build your app
-  # Ensure the APK/AAB file has been created. Your use case may vary.
-  gradle
+    # The uploaded filename must be unique for your team on the QA Wolf platform.
+    # One way to achieve that is to rely on the git commit hash.
+    # Feel free to use a different mechanism if desired (e.g. app version).
+    # See https://docs.fastlane.tools/actions/#source-control for other source control actions
+    ensure_git_status_clean
+    commit = last_git_commit
 
-  # Step 2: Upload the artifact to QA Wolf
-  upload_to_qawolf(
-    # Must be set or available as env var QAWOLF_API_KEY
-    qawolf_api_key: "qawolf_...",
+    # Build your app
+    # Ensure the APK/AAB file has been created. Your use case may vary.
+    # Check Fastlane's docs for alternative build methods.
+    gradle(
+        task: "assemble",
+        build_type: "Release",
+    )
 
-    # only set this if you have not built the artifact in the same lane
-    # e.g. via gradle or similar, check official Fastlane docs for details
-    file_path: "./build/app-bundle.apk"
-  )
+    # Upload the artifact to QA Wolf
+    upload_to_qawolf(
+        # Must be set or available as env var QAWOLF_API_KEY
+        qawolf_api_key: "qawolf_...",
 
-  # Step 3: Trigger a test run on QA Wolf
-  # optional, only use when deployment triggers are enabled in QA Wolf
-  notify_deploy_qawolf(
-    # Must be set or available as env var QAWOLF_API_KEY
-    qawolf_api_key: "qawolf_...",
+        # You can omit this if your gradle build outputs the file with a unique filename.
+        # If not, you'll want to do something like the following.
+        # Make sure you use the right file extension!
+        filename: "app_#{commit[:abbreviated_commit_hash]}.apk"
 
-    # These fields are dependent on how triggers are setup within QA Wolf.
-    # Reach out to support for help. All fields are optional.
-    branch: nil,
-    commit_url: nil,
-    deduplication_key: nil,
-    deployment_type: nil,
-    deployment_url: nil,
-    hosting_service: nil,
-    sha: nil,
-    variables: nil,
+        # Only set this if you have not built the artifact in the same lane,
+        # e.g. via gradle or similar, check official Fastlane docs for details.
+        file_path: "./build/app-bundle.apk",
+    )
 
-    # Only set this if your lane does not include `upload_to_qawolf`
-    run_input_path: nil,
-  )
+    # Trigger a test run on QA Wolf
+    # Optional, only use when deployment triggers are enabled in QA Wolf
+    notify_deploy_qawolf(
+        # Must be set or available as env var QAWOLF_API_KEY
+        qawolf_api_key: "qawolf_...",
+
+        # These fields are dependent on how triggers are setup within QA Wolf.
+        # Reach out to support for help. All fields are optional.
+        branch: nil,
+        commit_url: nil,
+        deduplication_key: nil,
+        deployment_type: nil,
+        deployment_url: nil,
+        hosting_service: nil,
+        sha: nil,
+        variables: nil,
+
+        # Only set this if your lane does not include `upload_to_qawolf`
+        run_input_path: nil,
+    )
 end
 ```
 
