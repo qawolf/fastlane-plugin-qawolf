@@ -5,7 +5,7 @@ require_relative '../helper/qawolf_helper'
 module Fastlane
   module Actions
     module SharedValues
-      QAWOLF_RUN_INPUT_PATH = :QAWOLF_RUN_INPUT_PATH
+      QAWOLF_EXECUTABLE_FILENAME = :QAWOLF_EXECUTABLE_FILENAME
     end
 
     # Casing is important for the action name!
@@ -16,20 +16,20 @@ module Fastlane
         qawolf_api_key = params[:qawolf_api_key] # Required
         qawolf_base_url = params[:qawolf_base_url]
         file_path = params[:file_path] || default_file_path
-        filename = params[:filename]
+        executable_file_basename = params[:executable_file_basename]
 
         validate_file_path(file_path)
 
         UI.message("🐺 Uploading to QA Wolf...")
 
-        run_input_path = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, filename)
+        uploaded_filename = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, executable_file_basename)
 
-        ENV["QAWOLF_RUN_INPUT_PATH"] = run_input_path
+        ENV["QAWOLF_EXECUTABLE_FILENAME"] = uploaded_filename
 
-        UI.success("🐺 Uploaded #{file_path} to QA Wolf successfully. Run input path: #{run_input_path}")
-        UI.success("🐺 Setting environment variable QAWOLF_RUN_INPUT_PATH = #{run_input_path}")
+        UI.success("🐺 Uploaded #{file_path} to QA Wolf successfully. Executable filename: #{uploaded_filename}")
+        UI.success("🐺 Setting environment variable QAWOLF_EXECUTABLE_FILENAME = #{uploaded_filename}")
 
-        Actions.lane_context[SharedValues::QAWOLF_RUN_INPUT_PATH] = run_input_path
+        Actions.lane_context[SharedValues::QAWOLF_EXECUTABLE_FILENAME] = uploaded_filename
       end
 
       # Validate file_path.
@@ -58,7 +58,7 @@ module Fastlane
 
       def self.output
         [
-          ['QAWOLF_RUN_INPUT_PATH', 'Uploaded file location for the executable artifact.']
+          ['QAWOLF_EXECUTABLE_FILENAME', 'Uploaded filename for the executable artifact.']
         ]
       end
 
@@ -94,12 +94,16 @@ module Fastlane
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :file_path,
-                                       description: "Path to the app file",
+                                       description: "Path to the built app file",
                                        optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :filename,
-                                       description: "Optional uploaded filename to use instead of the original filename",
-                                       optional: true,
+                                       type: String,
+                                       verify_block: proc do |value|
+                                         file_path = File.expand_path(value)
+                                         UI.user_error!("Couldn't find file at path '#{file_path}'") unless File.exist?(file_path)
+                                       end),
+          FastlaneCore::ConfigItem.new(key: :executable_file_basename,
+                                       description: "Required file basename for the uploaded executable",
+                                       optional: false,
                                        type: String)
         ]
       end
@@ -112,12 +116,13 @@ module Fastlane
 
       def self.example_code
         [
-          'qawolf',
-          'upload_to_qawolf',
+          'upload_to_qawolf(
+            executable_file_basename: "my_app"
+          )',
           'upload_to_qawolf(
             qawolf_api_key: ENV["QAWOLF_API_KEY"],
             file_path: "/path_to/app.apk",
-            filename: "custom_filename.apk"
+            executable_file_basename: "my_app"
            )'
         ]
       end

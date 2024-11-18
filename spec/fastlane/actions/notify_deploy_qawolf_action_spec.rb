@@ -2,11 +2,11 @@ require 'webmock/rspec'
 
 describe Fastlane::Actions::NotifyDeployQawolfAction do
   describe "#run" do
-    let(:run_input_path) { "file.apk" }
+    let(:executable_filename) { "file.apk" }
     let(:params) do
       {
         qawolf_api_key: "api_key",
-        run_input_path: run_input_path
+        executable_filename: executable_filename
       }
     end
     let(:deploy_response) do
@@ -32,7 +32,7 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
     end
 
     context "with no run input path set" do
-      let(:run_input_path) { nil }
+      let(:executable_filename) { nil }
 
       it "fails when no test run is triggered" do
         expect do

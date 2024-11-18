@@ -13,7 +13,7 @@ describe Fastlane::Actions::UploadToQawolfAction do
       {
         qawolf_api_key: "api_key",
         file_path: file_path,
-        filename: nil
+        executable_file_basename: "my_app"
       }
     end
 
@@ -22,7 +22,7 @@ describe Fastlane::Actions::UploadToQawolfAction do
       allow(File).to receive(:open).with(file_path, "rb").and_return('empty file')
 
       url = URI.join(Fastlane::Helper::QawolfHelper::BASE_URL, Fastlane::Helper::QawolfHelper::SIGNED_URL_ENDPOINT)
-      url.query = URI.encode_www_form({ 'file' => params[:filename] || File.basename(file_path) })
+      url.query = URI.encode_www_form({ 'file' => "#{params[:executable_file_basename]}#{File.extname(file_path)}" })
 
       stub_request(:get, url.to_s)
         .to_return(
@@ -47,18 +47,19 @@ describe Fastlane::Actions::UploadToQawolfAction do
       end.to raise_error(FastlaneCore::Interface::FastlaneError)
     end
 
-    context "with filename specified" do
+    context "with no executable_file_basename specified" do
       let(:params) do
         {
           qawolf_api_key: "api_key",
           file_path: file_path,
-          filename: "custom_filename.apk"
+          executable_file_basename: nil
         }
       end
 
-      it "uploads the file with custom filename" do
-        result = described_class.run(params)
-        expect(result).to eq(signed_url_response[:playgroundFileLocation])
+      it "fails to upload" do
+        expect do
+          described_class.run(params)
+        end.to raise_error(FastlaneCore::Interface::FastlaneError)
       end
     end
 

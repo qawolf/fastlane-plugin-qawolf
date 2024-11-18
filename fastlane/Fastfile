@@ -1,9 +1,12 @@
 lane :test do
   upload_to_qawolf(
-    file_path: "./fastlane/fastlane-test-app-debug.apk"
+    file_path: "./fastlane/fastlane-test-app-debug.apk",
+    executable_file_basename: "fastlane_test"
   )
   notify_deploy_qawolf(
     deployment_type: "android",
+    sha: false,
+    executable_environment_key: "ANDROID_APP",
     variables: {
       HELLO: "WORLD"
     }
