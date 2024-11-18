@@ -6,7 +6,7 @@ This project is a [_fastlane_](https://github.com/fastlane/fastlane) plugin. To 
 
 ```
 # Add this to your Gemfile
-gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "0.2.0"
+gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "0.3.0"
 ```
 
 ## About qawolf
@@ -14,9 +14,6 @@ gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qa
 Fastlane plugin for QA Wolf integration.
 
 Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated testing. Optionally triggers a test run on QA Wolf.
-
-> [!CAUTION]
-> To ensure QA Wolf tests target the correct app build and help debugging issues, we require uploaded filenames to be unique in some way. The example below uses the git commit hash, but you can use another unique identifier such as the app version number if you wish.
 
 > [!IMPORTANT]
 > Testing iOS apps (IPA) on QA Wolf is not yet available.
@@ -27,12 +24,9 @@ Check out the [example `Fastfile`](fastlane/Fastfile) to see how to use this plu
 
 ```ruby
 lane :build do
-    # The uploaded filename must be unique for your team on the QA Wolf platform.
-    # One way to achieve that is to rely on the git commit hash.
-    # Feel free to use a different mechanism if desired (e.g. app version).
+    # It's recommended to only trigger builds with a clean git status.
     # See https://docs.fastlane.tools/actions/#source-control for other source control actions
     ensure_git_status_clean
-    commit = last_git_commit
 
     # Build your app
     # Ensure the APK/AAB file has been created. Your use case may vary.
@@ -47,10 +41,11 @@ lane :build do
         # Must be set or available as env var QAWOLF_API_KEY
         qawolf_api_key: "qawolf_...",
 
-        # You can omit this if your gradle build outputs the file with a unique filename.
-        # If not, you'll want to do something like the following.
-        # Make sure you use the right file extension!
-        filename: "app_#{commit[:abbreviated_commit_hash]}.apk"
+        # Must be set to guarantee the uploaded file is replaced.
+        # Typically, this should include a git branch name or a QA Wolf environment name.
+        # Reach out to QA Wolf if you're unsure.
+        # Do NOT include a file extension, it'll be appended based on the build output file.
+        executable_file_basename: "calculator_app_staging",
 
         # Only set this if you have not built the artifact in the same lane,
         # e.g. via gradle or similar, check official Fastlane docs for details.
@@ -63,19 +58,39 @@ lane :build do
         # Must be set or available as env var QAWOLF_API_KEY
         qawolf_api_key: "qawolf_...",
 
-        # These fields are dependent on how triggers are setup within QA Wolf.
-        # Reach out to support for help. All fields are optional.
-        branch: nil,
-        commit_url: nil,
-        deduplication_key: nil,
-        deployment_type: nil,
+        # Optional, but set if requested by the QA Wolf team.
+        # This is mostly to help distinguish between multiple apps within the same team/environment.
+        executable_environment_key: "RUN_INPUT_PATH",
+
+        # Optional, defaults to the current git branch, if available. Set to false to skip.
+        branch: git_branch,
+
+        # URL to your VCS commit URL
+        commit_url: "https://github.com/team/repo/commit/ec78d7d81a6a66e9e89fd29f6e0616d5ba09840a",
+
+        # Set to cancel ongoing test runs with the same value
+        deduplication_key: "some_idempotent_value",
+
+        # Must be set if configured in the QA Wolf deployment trigger
+        deployment_type: "deployment_name",
+
+        # Can be left empty as it's mostly for web tests
+        # If set, will be available as `process.env.URL`
         deployment_url: nil,
-        hosting_service: nil,
-        sha: nil,
-        variables: nil,
+
+        # If configured in QA Wolf, set to GitHub or GitLab as needed
+        hosting_service: "GitHub",
+
+        # Optional, defaults to current git commit hash if available. Set to false to skip
+        sha: last_git_commit[:commit_hash],
+
+        # Additional hash of key-value pairs to set as environment variables for test runs
+        variables: {
+          FOO: "bar"
+        },
 
         # Only set this if your lane does not include `upload_to_qawolf`
-        run_input_path: nil,
+        executable_filename: "calculator_app_staging.apk",
     )
 end
 ```
@@ -208,7 +223,9 @@ The instructions below are for maintainers of this plugin.
         gradle(task: "clean assembleRelease")
 
         # relies on output of the gradle task and env var QAWOLF_API_KEY
-        qawolf
+        # see example above for options
+        upload_to_qawolf
+        notify_deploy_qawolf
       end
     end
     ```
