@@ -10,6 +10,8 @@ module Fastlane
 
     # Casing is important for the action name!
     class NotifyDeployQawolfAction < Action
+      BASE_PATH = "/home/wolf/run-inputs-executables/"
+
       def self.run(params)
         qawolf_api_key = params[:qawolf_api_key] # Required
         qawolf_base_url = params[:qawolf_base_url]
@@ -17,18 +19,19 @@ module Fastlane
         UI.message("🐺 Calling QA Wolf deploy success webhook...")
 
         variables = params[:variables] || {}
+        executable_environment_key = params[:executable_environment_key]
+        branch = params[:branch] if params[:branch].kind_of?(String) && !params[:branch].empty?
+        sha = params[:sha] if params[:sha].kind_of?(String) && !params[:sha].empty?
 
         options = {
-          branch: params[:branch],
+          branch: branch,
           commit_url: params[:commit_url],
           deployment_type: params[:deployment_type],
           deployment_url: params[:deployment_url],
           deduplication_key: params[:deduplication_key],
           hosting_service: params[:hosting_service],
-          sha: params[:sha],
-          variables: variables.merge({
-            RUN_INPUT_PATH: run_input_path(params)
-          })
+          sha: sha,
+          variables: variables.merge({ executable_environment_key => run_input_path(params) })
         }
 
         run_id = Helper::QawolfHelper.notify_deploy(qawolf_api_key, qawolf_base_url, options)
@@ -42,11 +45,11 @@ module Fastlane
       end
 
       def self.run_input_path(params)
-        if params[:run_input_path].nil?
-          UI.user_error!("🐺 No run input path found. Please run the `upload_to_qawolf` action first or set the `run_input_path` option.")
+        if params[:executable_filename].nil?
+          UI.user_error!("🐺 No executable filename found. Please run the `upload_to_qawolf` action first or set the `executable_filename` option.")
         end
 
-        return params[:run_input_path]
+        return "#{BASE_PATH}#{params[:executable_filename]}"
       end
 
       def self.description
@@ -79,10 +82,16 @@ module Fastlane
                                        description: "Your QA Wolf base URL",
                                        optional: true,
                                        type: String),
-          FastlaneCore::ConfigItem.new(key: :branch,
-                                       description: "If using Git, set this to the branch name so it can be displayed in the QA Wolf UI and find any pull requests in the linked repo",
+          FastlaneCore::ConfigItem.new(key: :executable_environment_key,
+                                       description: "Sets the environment key to use for the executable. Will alias the executable file's absolute path in tests to, for example, `process.env.RUN_INPUT_PATH` Defaults to `RUN_INPUT_PATH`",
                                        optional: true,
+                                       default_value: "RUN_INPUT_PATH",
                                        type: String),
+          FastlaneCore::ConfigItem.new(key: :branch,
+                                       description: "Defaults to the current git branch if available. Override by providing a custom value, or set it to false to send an empty value. Displayed in the QA Wolf UI to help find any pull requests in the linked repo",
+                                       optional: true,
+                                       default_value: Actions.git_branch,
+                                       type: Object),
           FastlaneCore::ConfigItem.new(key: :commit_url,
                                        description: "If you do not specify a hosting service, include this and the `sha` option to ensure the commit hash is a clickable link in QA Wolf",
                                        optional: true,
@@ -104,16 +113,18 @@ module Fastlane
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :sha,
-                                       description: "If a Git commit triggered this, include the commit hash so that we can create commit checks if you also have a GitHub repo linked. Also displayed in the QA Wolf UI",
+                                       description: "Defaults to the current git commit hash. Override by providing a custom value, or set to false to send an empty value. We use it to create commit checks if you also have a GitHub repo linked. Also displayed in the QA Wolf UI",
                                        optional: true,
-                                       type: String),
+                                       default_value: Actions.last_git_commit_hash(false),
+                                       type: Object),
           FastlaneCore::ConfigItem.new(key: :variables,
                                        description: "Optional key-value pairs to pass to the test run. These will be available as `process.env` in tests",
                                        optional: true,
-                                       type: Object),
-          FastlaneCore::ConfigItem.new(key: :run_input_path,
-                                       env_name: "QAWOLF_RUN_INPUT_PATH",
-                                       description: "The path of the run input file to run in QA Wolf. Set by the `upload_to_qawolf` action",
+                                       default_value: {},
+                                       type: Hash),
+          FastlaneCore::ConfigItem.new(key: :executable_filename,
+                                       env_name: "QAWOLF_EXECUTABLE_FILENAME",
+                                       description: "The filename of the executable to use in QA Wolf. Set by the `upload_to_qawolf` action",
                                        optional: true,
                                        type: String)
         ]
@@ -130,6 +141,8 @@ module Fastlane
           'notify_deploy_qawolf',
           'notify_deploy_qawolf(
             qawolf_api_key: ENV["QAWOLF_API_KEY"],
+            executable_environment_key: "MY_APP",
+            executable_filename: "<FILENAME>",
             branch: "<BRANCH_NAME>",
             commit_url: "<URL>",
             deployment_type: "<DEPLOYMENT_TYPE>",
