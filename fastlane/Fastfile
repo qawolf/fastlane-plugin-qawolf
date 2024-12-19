@@ -5,7 +5,7 @@ lane :test do
   )
   notify_deploy_qawolf(
     deployment_type: "android",
-    sha: false,
+    sha: "random_sha",
     executable_environment_key: "ANDROID_APP",
     variables: {
       HELLO: "WORLD"

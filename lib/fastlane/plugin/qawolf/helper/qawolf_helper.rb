@@ -84,8 +84,8 @@ module Fastlane
 
         results = response_json["results"]
 
-        failed_trigger = results.find { |result| result["failure_reason"].nil? == false }
-        success_trigger = results.find { |result| result["created_suite_id"].nil? == false }
+        failed_trigger = get_failed_trigger(results)
+        success_trigger = get_success_trigger(results)
 
         if failed_trigger.nil? && success_trigger.nil?
           raise "no matched trigger, reach out to QA Wolf support"
@@ -93,7 +93,15 @@ module Fastlane
           raise failed_trigger["failure_reason"]
         end
 
-        return success_trigger["created_suite_id"]
+        return success_trigger["created_suite_id"] || success_trigger["duplicate_suite_id"]
+      end
+
+      def self.get_failed_trigger(results)
+        results.find { |result| result["failure_reason"].nil? == false }
+      end
+
+      def self.get_success_trigger(results)
+        results.find { |result| result["created_suite_id"].nil? == false || result["duplicate_suite_id"].nil? == false }
       end
 
       # Triggers QA Wolf deploy success webhook to start test runs.
