@@ -68,5 +68,19 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
         end.to raise_error(FastlaneCore::Interface::FastlaneError)
       end
     end
+
+    context "with duplicate suite id set" do
+      let(:deploy_response) do
+        {
+          results: [{ duplicate_suite_id: "duplicate_suite_id" }]
+        }
+      end
+
+      it "returns the duplicate suite id" do
+        result = described_class.run(params)
+        expect(result).to eq(deploy_response[:results][0][:duplicate_suite_id
+        ])
+      end
+    end
   end
 end
