@@ -15,9 +15,6 @@ Fastlane plugin for QA Wolf integration.
 
 Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated testing. Optionally triggers a test run on QA Wolf.
 
-> [!IMPORTANT]
-> Testing iOS apps (IPA) on QA Wolf is not yet available.
-
 ## Example
 
 Check out the [example `Fastfile`](fastlane/Fastfile) to see how to use this plugin. Try it by cloning the repo, running `fastlane install_plugins` and `bundle exec fastlane test`.
@@ -28,12 +25,21 @@ lane :build do
     # See https://docs.fastlane.tools/actions/#source-control for other source control actions
     ensure_git_status_clean
 
-    # Build your app
-    # Ensure the APK/AAB file has been created. Your use case may vary.
-    # Check Fastlane's docs for alternative build methods.
+    # Build your app (Android or iOS, but not both in the same lane!)
+    # Check Fastlane's docs for alternative build methods. Your use case may vary.
+    # Android (APK/AAB)
     gradle(
+        # these options are not strictly required as below
+        # reach out to QA Wolf to verify the built APK/AAB works
         task: "assemble",
         build_type: "Release",
+    )
+    # iOS (IPA)
+    build_app(
+        # these options are not strictly required as below
+        # reach out to QA Wolf to verify the built IPA works
+        scheme: "Release",
+        export_method: "release-testing",
     )
 
     # Upload the artifact to QA Wolf
@@ -48,8 +54,9 @@ lane :build do
         executable_file_basename: "calculator_app_staging",
 
         # Only set this if you have not built the artifact in the same lane,
-        # e.g. via gradle or similar, check official Fastlane docs for details.
-        file_path: "./build/app-bundle.apk",
+        # e.g. via gradle or xcodebuild, check official Fastlane docs for details.
+        # file_path: "./build/app-bundle.apk",
+        # file_path: "./build/app.ipa",
     )
 
     # Trigger a test run on QA Wolf
