@@ -97,7 +97,8 @@ lane :build do
         },
 
         # Only set this if your lane does not include `upload_to_qawolf`
-        executable_filename: "calculator_app_staging.apk",
+        # executable_filename: "calculator_app_staging.apk",
+        # executable_filename: "calculator_app_staging.ipa",
     )
 end
 ```
