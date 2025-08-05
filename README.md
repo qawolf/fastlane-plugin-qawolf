@@ -6,7 +6,7 @@ This project is a [_fastlane_](https://github.com/fastlane/fastlane) plugin. To 
 
 ```
 # Add this to your Gemfile
-gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "0.3.1"
+gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "0.3.2"
 ```
 
 ## About qawolf
@@ -40,6 +40,16 @@ lane :build do
         # reach out to QA Wolf to verify the built IPA works
         scheme: "Release",
         export_method: "release-testing",
+    )
+
+    # (Optional) Resign the iOS IPA with QA Wolf instrumentation
+    sign_for_qawolf(
+        private_key_path: "private_key_or_p12_file_path",
+        password:         ENV["PASSWORD_FOR_PRIVATE_KEY_OR_P12_FILE"], # specify your certificate password
+        profile_path:     "mobile_provisioning_profile_path",
+        bundle_id:        "com.example.app",
+        file_path:        "./build/app.ipa",
+        output_path:      "./build/resigned-app.ipa"
     )
 
     # Upload the artifact to QA Wolf
