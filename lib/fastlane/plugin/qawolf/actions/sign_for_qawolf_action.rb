@@ -27,7 +27,8 @@ module Fastlane
           # Sign extensions first
           [extensions, apps].each do |bundle_set|
             bundle_set.each do |bundle_path, bundle_id|
-              sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id)
+              profile_for_bundle = (params[:extension_profile_paths] || {})[bundle_id] || params[:profile_path]
+              sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_for_bundle)
             end
           end
 
@@ -70,13 +71,13 @@ module Fastlane
         FileUtils.mv(output_tmp, output_path)
       end
 
-      def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id)
+      def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path)
         UI.message("Signing bundle #{bundle_path} (#{bundle_id})…")
         cmd = [
           zsign_path,
           '-k', params[:private_key_path],
           '-p', params[:password],
-          '-m', params[:profile_path],
+          '-m', profile_path,
           '-b', bundle_id || params[:bundle_id],
           '-l', dylib_path,
           bundle_path
@@ -121,6 +122,18 @@ module Fastlane
                                        type: String,
                                        verify_block: proc do |value|
                                          UI.user_error!("Could not find mobile provisioning profile at path #{value}") unless File.exist?(value)
+                                       end),
+
+          FastlaneCore::ConfigItem.new(key: :extension_profile_paths,
+                                       description: 'Hash mapping extension bundle identifiers to mobile provisioning profile paths',
+                                       optional: true,
+                                       type: Hash,
+                                       default_value: {},
+                                       verify_block: proc do |value|
+                                         UI.user_error!('extension_profile_paths must be a Hash') unless value.kind_of?(Hash)
+                                         value.each do |bundle_id, path|
+                                           UI.user_error!("Could not find mobile provisioning profile at path #{path} for bundle #{bundle_id}") unless File.exist?(path)
+                                         end
                                        end),
 
           FastlaneCore::ConfigItem.new(key: :bundle_id,

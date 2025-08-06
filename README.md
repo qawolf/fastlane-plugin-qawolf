@@ -47,6 +47,10 @@ lane :build do
         private_key_path: "private_key_or_p12_file_path",
         password:         ENV["PASSWORD_FOR_PRIVATE_KEY_OR_P12_FILE"], # specify your certificate password
         profile_path:     "mobile_provisioning_profile_path",
+        # Optional: Use different provisioning profiles for extensions
+        extension_profile_paths: {
+          "com.example.app.share-extension" => "share_extension.mobileprovision"
+        },
         bundle_id:        "com.example.app",
         file_path:        "./build/app.ipa",
         output_path:      "./build/resigned-app.ipa"
