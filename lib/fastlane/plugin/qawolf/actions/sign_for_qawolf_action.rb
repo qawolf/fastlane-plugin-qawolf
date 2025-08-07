@@ -9,6 +9,7 @@ module Fastlane
   module Actions
     class SignForQawolfAction < Action
       # Entry point for the action
+      # rubocop:disable Metrics/PerceivedComplexity
       def self.run(params)
         UI.message('Starting resigning process for QA Wolf…')
 
@@ -30,7 +31,8 @@ module Fastlane
               profiles = params[:provisioning_profile_paths] || {}
               profile_for_bundle = profiles[bundle_id]
               UI.user_error!("No provisioning profile path provided for bundle #{bundle_id}") unless profile_for_bundle
-              sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_for_bundle)
+              cert_for_bundle = (params[:certificate_paths] || {})[bundle_id] || params[:certificate_path]
+              sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_for_bundle, cert_for_bundle)
             end
           end
 
@@ -39,6 +41,7 @@ module Fastlane
         end
 
         UI.success("Successfully resigned IPA saved at #{params[:output_path]}")
+        # rubocop:enable Metrics/PerceivedComplexity
       end
 
       #####################################################
@@ -76,7 +79,7 @@ module Fastlane
       # Extract entitlements from the original bundle, merge them with the
       # provisioning profile's entitlements (mimicking Xcode's behaviour) and
       # pass the merged file to zsign via the -e flag.
-      def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path)
+      def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path, certificate_path = nil)
         UI.message("Signing bundle #{bundle_path} (#{bundle_id})…")
 
         merged_entitlements_path = merge_entitlements(bundle_path, profile_path)
@@ -86,6 +89,7 @@ module Fastlane
           '-k', params[:private_key_path],
           '-p', params[:password],
           '-m', profile_path,
+          ('-c' if certificate_path), certificate_path,
           '-b', bundle_id,
           ('-e' if merged_entitlements_path), merged_entitlements_path,
           '-l', dylib_path,
@@ -181,6 +185,7 @@ module Fastlane
         'Resign an IPA with QA Wolf instrumentation using zsign.'
       end
 
+      # rubocop:disable Metrics/PerceivedComplexity
       def self.available_options
         [
           FastlaneCore::ConfigItem.new(key: :version,
@@ -202,6 +207,26 @@ module Fastlane
                                        sensitive: true,
                                        verify_block: proc do |value|
                                          UI.user_error!('Password must be provided and cannot be empty') if value.to_s.strip.empty?
+                                       end),
+
+          FastlaneCore::ConfigItem.new(key: :certificate_path,
+                                       description: 'Path to the signing certificate (.pem/.cer) when it is separate from the private key',
+                                       optional: true,
+                                       type: String,
+                                       verify_block: proc do |value|
+                                         UI.user_error!("Could not find certificate at path #{value}") unless value.nil? || File.exist?(value)
+                                       end),
+
+          FastlaneCore::ConfigItem.new(key: :certificate_paths,
+                                       description: 'Hash mapping bundle identifiers to certificate paths',
+                                       optional: true,
+                                       type: Hash,
+                                       default_value: {},
+                                       verify_block: proc do |value|
+                                         UI.user_error!('certificate_paths must be a Hash') unless value.kind_of?(Hash)
+                                         value.each do |bundle_id, path|
+                                           UI.user_error!("Could not find certificate at path #{path} for bundle #{bundle_id}") unless File.exist?(path)
+                                         end
                                        end),
 
           FastlaneCore::ConfigItem.new(key: :provisioning_profile_paths,
@@ -226,6 +251,7 @@ module Fastlane
                                        type: String)
         ]
       end
+      # rubocop:enable Metrics/PerceivedComplexity
 
       def self.authors
         ['QA Wolf']

@@ -44,14 +44,22 @@ lane :build do
 
     # (Optional) Resign the IPA with QA Wolf instrumentation
     sign_for_qawolf(
-        private_key_path: "private_key_or_p12_file_path",
-        password:         ENV["PASSWORD_FOR_PRIVATE_KEY_OR_P12_FILE"], # specify your certificate password
+        private_key_path: "signing_key.p12",           # or .key if you provide certificate_path below
+        certificate_path: "certificate.pem",            # optional when private_key_path is a P12 containing the cert
+        password:         ENV["PASSWORD_FOR_PRIVATE_KEY_OR_P12_FILE"],
+
         provisioning_profile_paths: {
-          "com.example.app" => "mobile_provisioning_profile_path",
-          "com.example.app.share-extension" => "share_extension.mobileprovision"
+          # maps each bundle identifier → provisioning profile
+          "com.example.app"                 => "App.mobileprovision",
+          "com.example.app.share-extension" => "ShareExt.mobileprovision"
         },
-        file_path:        "./build/app.ipa",
-        output_path:      "./build/resigned-app.ipa"
+        certificate_paths: {
+          # (optional) bundle identifier → certificate to use for that bundle
+          "com.example.app.share-extension" => "ShareExtCert.pem"
+        },
+
+        file_path:   "./build/app.ipa",
+        output_path: "./build/resigned-app.ipa"
     )
 
     # Upload the artifact to QA Wolf

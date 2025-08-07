@@ -14,9 +14,9 @@ describe Fastlane::Actions::SignForQawolfAction do
       # Stub entitlement merging helpers so we don't shell out during tests
       allow(described_class).to receive_messages(
         read_entitlements_from_bundle: {},
-        read_entitlements_from_profile: { 'com.apple.developer.associated-domains' => ['applinks:example.com'] }
+        read_entitlements_from_profile: { 'com.apple.developer.associated-domains' => ['applinks:example.com'] },
+        system: true
       )
-      allow(described_class).to receive(:system).and_return(true)
     end
 
     def stub_assets(zsign_path, dylib_path)
