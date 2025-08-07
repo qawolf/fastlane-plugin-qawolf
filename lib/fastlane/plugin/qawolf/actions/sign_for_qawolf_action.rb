@@ -115,9 +115,14 @@ module Fastlane
 
         require 'tempfile'
         tf = Tempfile.new(['qawolf_entitlements', '.plist'])
-        plist = CFPropertyList::List.new
-        plist.value = CFPropertyList.guess(merged)
-        plist.save(tf.path, CFPropertyList::List::FORMAT_XML)
+        require 'plist'
+        File.write(tf.path, merged.to_plist)
+
+        # Validate the generated XML so that zsign receives a proper plist.
+        unless system('/usr/bin/plutil', '-lint', tf.path, out: File::NULL)
+          UI.user_error!('Generated entitlements plist is invalid XML')
+        end
+
         tf.close
         tf.path
       end
@@ -153,6 +158,10 @@ module Fastlane
               merged[k] = (merged[k] + v).uniq
             elsif v.kind_of?(Hash) && merged[k].kind_of?(Hash)
               merged[k] = deep_merge_entitlements(merged[k], v)
+            elsif v.kind_of?(String) && merged[k].kind_of?(Array)
+              # Keep broader array form when profile only has wildcard string
+              # or mismatched scalar; Xcode preserves the array.
+              # do nothing, keep existing array
             else
               merged[k] = v
             end
