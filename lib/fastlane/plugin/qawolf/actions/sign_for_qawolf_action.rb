@@ -27,7 +27,9 @@ module Fastlane
           # Sign extensions first
           [extensions, apps].each do |bundle_set|
             bundle_set.each do |bundle_path, bundle_id|
-              profile_for_bundle = (params[:extension_profile_paths] || {})[bundle_id] || params[:profile_path]
+              profiles = params[:provisioning_profile_paths] || {}
+              profile_for_bundle = profiles[bundle_id]
+              UI.user_error!("No provisioning profile path provided for bundle #{bundle_id}") unless profile_for_bundle
               sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_for_bundle)
             end
           end
@@ -71,20 +73,96 @@ module Fastlane
         FileUtils.mv(output_tmp, output_path)
       end
 
+      # Extract entitlements from the original bundle, merge them with the
+      # provisioning profile's entitlements (mimicking Xcode's behaviour) and
+      # pass the merged file to zsign via the -e flag.
       def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path)
         UI.message("Signing bundle #{bundle_path} (#{bundle_id})…")
+
+        merged_entitlements_path = merge_entitlements(bundle_path, profile_path)
+
         cmd = [
           zsign_path,
           '-k', params[:private_key_path],
           '-p', params[:password],
           '-m', profile_path,
-          '-b', bundle_id || params[:bundle_id],
+          '-b', bundle_id,
+          ('-e' if merged_entitlements_path), merged_entitlements_path,
           '-l', dylib_path,
           bundle_path
-        ].map(&:to_s)
+        ].compact.map(&:to_s)
 
         Actions.sh(cmd.shelljoin)
+      ensure
+        # Clean up temp entitlements file if we created one
+        FileUtils.rm_f(merged_entitlements_path) if merged_entitlements_path && File.exist?(merged_entitlements_path)
       end
+
+      #---------------------------------------------------------------
+      # Entitlements helpers
+      #---------------------------------------------------------------
+
+      # Returns path to a temp entitlements plist that is the result of merging
+      # the app's own entitlements with those in the provisioning profile.
+      # May return nil if we fail to obtain any entitlements (should not happen
+      # in normal scenarios).
+      def self.merge_entitlements(bundle_path, profile_path)
+        app_entitlements     = read_entitlements_from_bundle(bundle_path)
+        profile_entitlements = read_entitlements_from_profile(profile_path)
+
+        merged = deep_merge_entitlements(app_entitlements, profile_entitlements)
+        return nil if merged.empty?
+
+        require 'tempfile'
+        tf = Tempfile.new(['qawolf_entitlements', '.plist'])
+        plist = CFPropertyList::List.new
+        plist.value = CFPropertyList.guess(merged)
+        plist.save(tf.path, CFPropertyList::List::FORMAT_XML)
+        tf.close
+        tf.path
+      end
+
+      def self.read_entitlements_from_bundle(bundle_path)
+        output = Actions.sh("/usr/bin/codesign -d --entitlements :- #{Shellwords.escape(bundle_path)} 2>/dev/null", log: false)
+        return {} if output.to_s.strip.empty?
+
+        plist = CFPropertyList::List.new(data: output)
+        CFPropertyList.native_types(plist.value) || {}
+      rescue StandardError => e
+        UI.important("Failed to read entitlements from bundle #{bundle_path}: #{e.message}")
+        {}
+      end
+
+      def self.read_entitlements_from_profile(profile_path)
+        cms_xml = Actions.sh("/usr/bin/security cms -D -i #{Shellwords.escape(profile_path)}", log: false)
+        plist   = CFPropertyList::List.new(data: cms_xml)
+        dict    = CFPropertyList.native_types(plist.value)
+        dict.fetch('Entitlements', {})
+      rescue StandardError => e
+        UI.important("Failed to read entitlements from provisioning profile #{profile_path}: #{e.message}")
+        {}
+      end
+
+      # Simple deep merge: arrays are union-merged, scalars – profile value wins.
+      # rubocop:disable Metrics/PerceivedComplexity
+      def self.deep_merge_entitlements(app_ent, profile_ent)
+        merged = app_ent.dup
+        profile_ent.each do |k, v|
+          if merged.key?(k)
+            if v.kind_of?(Array) && merged[k].kind_of?(Array)
+              merged[k] = (merged[k] + v).uniq
+            elsif v.kind_of?(Hash) && merged[k].kind_of?(Hash)
+              merged[k] = deep_merge_entitlements(merged[k], v)
+            else
+              merged[k] = v
+            end
+          else
+            merged[k] = v
+          end
+        end
+        merged
+      end
+      # rubocop:enable Metrics/PerceivedComplexity
 
       #####################################################
       # @!group Documentation
@@ -117,28 +195,15 @@ module Fastlane
                                          UI.user_error!('Password must be provided and cannot be empty') if value.to_s.strip.empty?
                                        end),
 
-          FastlaneCore::ConfigItem.new(key: :profile_path,
-                                       description: 'Path to the mobile provisioning profile',
-                                       type: String,
-                                       verify_block: proc do |value|
-                                         UI.user_error!("Could not find mobile provisioning profile at path #{value}") unless File.exist?(value)
-                                       end),
-
-          FastlaneCore::ConfigItem.new(key: :extension_profile_paths,
-                                       description: 'Hash mapping extension bundle identifiers to mobile provisioning profile paths',
-                                       optional: true,
+          FastlaneCore::ConfigItem.new(key: :provisioning_profile_paths,
+                                       description: 'Hash mapping bundle identifiers to mobile provisioning profile paths',
                                        type: Hash,
-                                       default_value: {},
                                        verify_block: proc do |value|
-                                         UI.user_error!('extension_profile_paths must be a Hash') unless value.kind_of?(Hash)
+                                         UI.user_error!('provisioning_profile_paths must be a Hash') unless value.kind_of?(Hash)
                                          value.each do |bundle_id, path|
                                            UI.user_error!("Could not find mobile provisioning profile at path #{path} for bundle #{bundle_id}") unless File.exist?(path)
                                          end
                                        end),
-
-          FastlaneCore::ConfigItem.new(key: :bundle_id,
-                                       description: 'Bundle identifier to resign with',
-                                       type: String),
 
           FastlaneCore::ConfigItem.new(key: :file_path,
                                        description: 'Path to the IPA to resign',

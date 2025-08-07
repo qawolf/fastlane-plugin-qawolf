@@ -10,6 +10,12 @@ describe Fastlane::Actions::SignForQawolfAction do
     before do
       # Skip actual IPA unpacking/packing
       allow(described_class).to receive_messages(unpack_ipa: '/fake/payload', repack_ipa: true)
+
+      # Stub entitlement merging helpers so we don't shell out during tests
+      allow(described_class).to receive_messages(
+        read_entitlements_from_bundle: {},
+        read_entitlements_from_profile: { 'com.apple.developer.associated-domains' => ['applinks:example.com'] }
+      )
     end
 
     def stub_assets(zsign_path, dylib_path)
@@ -21,44 +27,6 @@ describe Fastlane::Actions::SignForQawolfAction do
         path = File.join(dir, name)
         File.write(path, name)
         acc[name.to_sym] = path
-      end
-    end
-
-    it 'uses a single profile for all bundles when no overrides are provided' do
-      Dir.mktmpdir do |tmp_dir|
-        paths = create_tmp_files(tmp_dir, %w[app.ipa key.p12 default.mobileprovision])
-        ipa_path      = paths[:'app.ipa']
-        key_path      = paths[:'key.p12']
-        default_prof  = paths[:'default.mobileprovision']
-
-        zsign_path = '/fake/cache/zsign'
-        dylib_path = '/fake/cache/instrumentation.dylib'
-        stub_assets(zsign_path, dylib_path)
-
-        allow(helper).to receive(:find_bundles).and_return({
-          '/fake/payload/MyApp.app' => 'com.example.app'
-        })
-
-        executed_cmds = []
-        allow(Fastlane::Actions).to receive(:sh) do |cmd|
-          executed_cmds << cmd
-          true
-        end
-
-        ff = Fastlane::FastFile.new.parse("lane :test do
-          sign_for_qawolf(
-            private_key_path: '#{key_path}',
-            password:         'secret',
-            profile_path:     '#{default_prof}',
-            bundle_id:        'com.example.app',
-            file_path:        '#{ipa_path}',
-            output_path:      '#{tmp_dir}/out.ipa'
-          )
-        end")
-
-        expect { ff.runner.execute(:test) }.not_to raise_error
-        expect(executed_cmds.size).to eq(1)
-        expect(executed_cmds.first).to include("-m #{default_prof}")
       end
     end
 
@@ -92,12 +60,11 @@ describe Fastlane::Actions::SignForQawolfAction do
           sign_for_qawolf(
             private_key_path: '#{key_path}',
             password:         'secret',
-            profile_path:     '#{default_prof}',
-            extension_profile_paths: {
+            provisioning_profile_paths: {
               'com.example.app.broadcast' => '#{broadcast_prof}',
-              'com.example.app.share' => '#{share_prof}'
+              'com.example.app.share'     => '#{share_prof}',
+              'com.example.app'           => '#{default_prof}'
             },
-            bundle_id:        'com.example.app',
             file_path:        '#{ipa_path}',
             output_path:      '#{tmp_dir}/out.ipa'
           )
@@ -110,12 +77,15 @@ describe Fastlane::Actions::SignForQawolfAction do
         broadcast_cmd = executed_cmds.find { |c| c.include?('BroadcastExt.appex') }
 
         expect(app_cmd).to include("-m #{default_prof}")
+        expect(app_cmd).to include('-e')
         expect(share_cmd).to include("-m #{share_prof}")
+        expect(share_cmd).to include('-e')
         expect(broadcast_cmd).to include("-m #{broadcast_prof}")
+        expect(broadcast_cmd).to include('-e')
       end
     end
 
-    it 'falls back to the default profile for bundles without an override' do
+    it 'raises an error when a bundle is missing a provisioning profile' do
       Dir.mktmpdir do |tmp_dir|
         paths = create_tmp_files(tmp_dir, %w[app.ipa key.p12 default.mobileprovision share.mobileprovision broadcast.mobileprovision])
         ipa_path     = paths[:'app.ipa']
@@ -145,25 +115,16 @@ describe Fastlane::Actions::SignForQawolfAction do
           sign_for_qawolf(
             private_key_path: '#{key_path}',
             password:         'secret',
-            profile_path:     '#{default_prof}',
-            extension_profile_paths: {
-              'com.example.app.broadcast' => '#{broadcast_prof}'
+            provisioning_profile_paths: {
+              'com.example.app.broadcast' => '#{broadcast_prof}',
+              'com.example.app'          => '#{default_prof}'
             },
-            bundle_id:        'com.example.app',
             file_path:        '#{ipa_path}',
             output_path:      '#{tmp_dir}/out.ipa'
           )
         end")
 
-        expect { ff.runner.execute(:test) }.not_to raise_error
-
-        app_cmd   = executed_cmds.find { |c| c.include?('MyApp.app') }
-        share_cmd = executed_cmds.find { |c| c.include?('ShareExt.appex') }
-        broadcast_cmd = executed_cmds.find { |c| c.include?('BroadcastExt.appex') }
-
-        expect(app_cmd).to include("-m #{default_prof}")
-        expect(share_cmd).to include("-m #{default_prof}")
-        expect(broadcast_cmd).to include("-m #{broadcast_prof}")
+        expect { ff.runner.execute(:test) }.to raise_error(FastlaneCore::Interface::FastlaneError)
       end
     end
   end
