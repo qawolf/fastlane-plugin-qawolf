@@ -16,6 +16,11 @@ module Fastlane
         version = params[:version] || Fastlane::Helper::ResignHelper::RESIGN_VERSION
         zsign_path, dylib_path = Fastlane::Helper::ResignHelper.ensure_assets(version)
 
+        if params[:debug]
+          UI.important('QA Wolf resign debug is enabled. Printing signing assets info…')
+          debug_print_credentials(params)
+        end
+
         # Create temp directory for IPA unpacking
         Dir.mktmpdir('qawolf-resign') do |tmp_dir|
           payload_dir = unpack_ipa(params[:file_path], tmp_dir)
@@ -82,10 +87,13 @@ module Fastlane
       def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path, certificate_path = nil)
         UI.message("Signing bundle #{bundle_path} (#{bundle_id})…")
 
+        debug_print_profile(profile_path, bundle_id) if params[:debug]
+
         merged_entitlements_path = merge_entitlements(bundle_path, profile_path)
 
         cmd = [
           zsign_path,
+          (params[:debug] ? '-d' : nil),
           '-k', params[:private_key_path],
           '-p', params[:password],
           '-m', profile_path,
@@ -105,6 +113,82 @@ module Fastlane
       #---------------------------------------------------------------
       # Entitlements helpers
       #---------------------------------------------------------------
+
+      # Print information about provided signing materials to help debug
+      # rubocop:disable Metrics/PerceivedComplexity
+      def self.debug_print_credentials(params)
+        pk_path = params[:private_key_path]
+        cert_path = params[:certificate_path]
+
+        if pk_path && File.exist?(pk_path)
+          UI.message("Private key path: #{pk_path}")
+          begin
+            if pk_path.downcase.end_with?('.p12', '.pfx')
+              # Print basic info about certs embedded in P12 (no keys)
+              output = Actions.sh("openssl pkcs12 -info -in #{Shellwords.escape(pk_path)} -passin pass:#{Shellwords.escape(params[:password])} -nokeys 2>/dev/null", log: false)
+              count = output.to_s.scan('subject=').size
+              UI.message("P12 certificate count: #{count}")
+              # Reduce noise; show subjects/issuers/fingerprints if present
+              subjects = output.to_s.lines.select { |l| l.include?('subject=') || l.include?('issuer=') }
+              UI.message("P12 contains the following subjects/issuers (truncated):\n#{subjects.join}")
+            else
+              # Non-P12 private key; show key type if possible
+              key_info = Actions.sh("openssl pkey -in #{Shellwords.escape(pk_path)} -passin pass:#{Shellwords.escape(params[:password])} -text -noout 2>/dev/null | head -n 1", log: false)
+              UI.message("Private key type: #{key_info.to_s.strip}")
+            end
+          rescue StandardError => e
+            UI.important("Failed to inspect private key: #{e.message}")
+          end
+        else
+          UI.important('Private key path does not exist or was not provided')
+        end
+
+        # Inspect default certificate, if provided
+        if cert_path && File.exist?(cert_path)
+          UI.message("Certificate path: #{cert_path}")
+          begin
+            inform = cert_path.downcase.end_with?('.der', '.cer') ? 'der' : 'pem'
+            cert_info = Actions.sh("openssl x509 -in #{Shellwords.escape(cert_path)} -inform #{inform} -noout -subject -issuer -fingerprint -serial 2>/dev/null", log: false)
+            UI.message("Certificate info:\n#{cert_info}")
+          rescue StandardError => e
+            UI.important("Failed to inspect certificate: #{e.message}")
+          end
+        end
+        # rubocop:enable Metrics/PerceivedComplexity
+      end
+
+      # Decode provisioning profile and print expected authorities and identifiers
+      def self.debug_print_profile(profile_path, bundle_id)
+        UI.message("Provisioning profile for #{bundle_id}: #{profile_path}")
+        begin
+          cms_xml = Actions.sh("/usr/bin/security cms -D -i #{Shellwords.escape(profile_path)}", log: false)
+          plist   = CFPropertyList::List.new(data: cms_xml)
+          dict    = CFPropertyList.native_types(plist.value)
+
+          ent = dict['Entitlements'] || {}
+          app_id = ent['application-identifier']
+          team_ids = dict['TeamIdentifier'] || []
+          UI.message("Profile AppID: #{app_id}")
+          UI.message("Profile TeamIdentifier(s): #{team_ids.join(', ')}")
+
+          dev_certs = dict['DeveloperCertificates'] || []
+          UI.message("Profile DeveloperCertificates count: #{dev_certs.size}")
+
+          # Print subject and fingerprint for first few certificates
+          require 'tempfile'
+          dev_certs.first(3).each_with_index do |data, idx|
+            Tempfile.create(["prov_cert_", ".der"]) do |tf|
+              tf.binmode
+              tf.write(data)
+              tf.flush
+              info = Actions.sh("openssl x509 -inform der -in #{Shellwords.escape(tf.path)} -noout -subject -fingerprint 2>/dev/null", log: false)
+              UI.message("Profile Cert[#{idx}] => #{info.strip}")
+            end
+          end
+        rescue StandardError => e
+          UI.important("Failed to inspect provisioning profile #{profile_path}: #{e.message}")
+        end
+      end
 
       # Returns path to a temp entitlements plist that is the result of merging
       # the app's own entitlements with those in the provisioning profile.
@@ -193,6 +277,11 @@ module Fastlane
                                        optional: true,
                                        type: String,
                                        default_value: Fastlane::Helper::ResignHelper::RESIGN_VERSION),
+          FastlaneCore::ConfigItem.new(key: :debug,
+                                       description: 'Enable verbose resign debug (passes -d to zsign and prints signing asset info)',
+                                       optional: true,
+                                       type: TrueClass,
+                                       default_value: false),
 
           FastlaneCore::ConfigItem.new(key: :private_key_path,
                                        description: 'Path to the private key or P12 file',
