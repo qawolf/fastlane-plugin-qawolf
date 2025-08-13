@@ -11,10 +11,9 @@ describe Fastlane::Actions::SignForQawolfAction do
       # Skip actual IPA unpacking/packing
       allow(described_class).to receive_messages(unpack_ipa: '/fake/payload', repack_ipa: true)
 
-      # Stub entitlement merging helpers so we don't shell out during tests
+      # Stub entitlements extractor to avoid shelling out during tests
       allow(described_class).to receive_messages(
-        read_entitlements_from_bundle: {},
-        read_entitlements_from_profile: { 'com.apple.developer.associated-domains' => ['applinks:example.com'] },
+        extract_entitlements: '/tmp/dummy.plist',
         system: true
       )
     end

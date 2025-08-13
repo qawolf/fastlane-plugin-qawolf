@@ -21,7 +21,6 @@ Gem::Specification.new do |spec|
   # since this would cause a circular dependency
 
   spec.add_dependency('CFPropertyList', '~> 3.0')
-  spec.add_dependency('plist', '~> 3.7')
   spec.add_dependency('rest-client', '~> 2.1')
   spec.add_dependency('rubyzip', '~> 2.3')
 end

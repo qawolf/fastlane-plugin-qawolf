@@ -81,15 +81,14 @@ module Fastlane
         FileUtils.mv(output_tmp, output_path)
       end
 
-      # Extract entitlements from the original bundle, merge them with the
-      # provisioning profile's entitlements (mimicking Xcode's behaviour) and
-      # pass the merged file to zsign via the -e flag.
+      # Extract the bundle's own entitlements and pass them straight to zsign (-e)
+      # so we preserve the exact entitlement set. No merging is performed.
       def self.sign_bundle(zsign_path, dylib_path, params, bundle_path, bundle_id, profile_path, certificate_path = nil)
         UI.message("Signing bundle #{bundle_path} (#{bundle_id})…")
 
         debug_print_profile(profile_path, bundle_id) if params[:debug]
 
-        merged_entitlements_path = merge_entitlements(bundle_path, profile_path)
+        entitlements_path = extract_entitlements(bundle_path)
 
         cmd = [
           zsign_path,
@@ -99,15 +98,15 @@ module Fastlane
           '-m', profile_path,
           ('-c' if certificate_path), certificate_path,
           '-b', bundle_id,
-          ('-e' if merged_entitlements_path), merged_entitlements_path,
+          '-e', entitlements_path,
           '-l', dylib_path,
           bundle_path
         ].compact.map(&:to_s)
 
         Actions.sh(cmd.shelljoin)
       ensure
-        # Clean up temp entitlements file if we created one
-        FileUtils.rm_f(merged_entitlements_path) if merged_entitlements_path && File.exist?(merged_entitlements_path)
+        # Clean up temporary entitlements file
+        FileUtils.rm_f(entitlements_path) if entitlements_path && File.exist?(entitlements_path)
       end
 
       #---------------------------------------------------------------
@@ -190,76 +189,23 @@ module Fastlane
         end
       end
 
-      # Returns path to a temp entitlements plist that is the result of merging
-      # the app's own entitlements with those in the provisioning profile.
-      # May return nil if we fail to obtain any entitlements (should not happen
-      # in normal scenarios).
-      def self.merge_entitlements(bundle_path, profile_path)
-        app_entitlements     = read_entitlements_from_bundle(bundle_path)
-        profile_entitlements = read_entitlements_from_profile(profile_path)
-
-        merged = deep_merge_entitlements(app_entitlements, profile_entitlements)
-        return nil if merged.empty?
+      # Extract entitlements from the existing signed bundle and save them
+      # to a temporary plist file which will be provided to zsign.
+      # Returns the temp file path. Raises if extraction fails.
+      def self.extract_entitlements(bundle_path)
+        output = Actions.sh("/usr/bin/codesign -d --entitlements :- #{Shellwords.escape(bundle_path)} 2>/dev/null", log: false)
+        if output.to_s.strip.empty?
+          UI.user_error!("Failed to extract entitlements from bundle #{bundle_path}; codesign returned empty output")
+        end
 
         require 'tempfile'
         tf = Tempfile.new(['qawolf_entitlements', '.plist'])
-        require 'plist'
-        File.write(tf.path, merged.to_plist)
-
-        # Validate the generated XML so that zsign receives a proper plist.
-        unless system('/usr/bin/plutil', '-lint', tf.path, out: File::NULL)
-          UI.user_error!('Generated entitlements plist is invalid XML')
-        end
-
+        File.write(tf.path, output)
         tf.close
         tf.path
-      end
-
-      def self.read_entitlements_from_bundle(bundle_path)
-        output = Actions.sh("/usr/bin/codesign -d --entitlements :- #{Shellwords.escape(bundle_path)} 2>/dev/null", log: false)
-        return {} if output.to_s.strip.empty?
-
-        plist = CFPropertyList::List.new(data: output)
-        CFPropertyList.native_types(plist.value) || {}
       rescue StandardError => e
-        UI.important("Failed to read entitlements from bundle #{bundle_path}: #{e.message}")
-        {}
+        UI.user_error!("Failed to extract entitlements from bundle #{bundle_path}: #{e.message}")
       end
-
-      def self.read_entitlements_from_profile(profile_path)
-        cms_xml = Actions.sh("/usr/bin/security cms -D -i #{Shellwords.escape(profile_path)}", log: false)
-        plist   = CFPropertyList::List.new(data: cms_xml)
-        dict    = CFPropertyList.native_types(plist.value)
-        dict.fetch('Entitlements', {})
-      rescue StandardError => e
-        UI.important("Failed to read entitlements from provisioning profile #{profile_path}: #{e.message}")
-        {}
-      end
-
-      # Simple deep merge: arrays are union-merged, scalars – profile value wins.
-      # rubocop:disable Metrics/PerceivedComplexity
-      def self.deep_merge_entitlements(app_ent, profile_ent)
-        merged = app_ent.dup
-        profile_ent.each do |k, v|
-          if merged.key?(k)
-            if v.kind_of?(Array) && merged[k].kind_of?(Array)
-              merged[k] = (merged[k] + v).uniq
-            elsif v.kind_of?(Hash) && merged[k].kind_of?(Hash)
-              merged[k] = deep_merge_entitlements(merged[k], v)
-            elsif v.kind_of?(String) && merged[k].kind_of?(Array)
-              # Keep broader array form when profile only has wildcard string
-              # or mismatched scalar; Xcode preserves the array.
-              # do nothing, keep existing array
-            else
-              merged[k] = v
-            end
-          else
-            merged[k] = v
-          end
-        end
-        merged
-      end
-      # rubocop:enable Metrics/PerceivedComplexity
 
       #####################################################
       # @!group Documentation
