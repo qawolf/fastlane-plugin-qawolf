@@ -42,6 +42,12 @@ lane :build do
         export_method: "release-testing",
     )
 
+    # Inject QA Wolf instrumentation (Optional and iOS only)
+    inject_qawolf_instrumentation(
+        input: "./build/app.ipa",
+        output: "./build/app_instrumented.ipa"
+    )
+
     # Upload the artifact to QA Wolf
     upload_to_qawolf(
         # Must be set or available as env var QAWOLF_API_KEY
@@ -102,6 +108,19 @@ lane :build do
     )
 end
 ```
+
+## Injecting instrumentation into an iOS IPA
+
+If you need QA Wolf to record crashes and additional runtime information during iOS test runs, insert our `instrumentation.dylib` into your IPA before uploading it. This can be done with the `inject_qawolf_instrumentation` action:
+
+```ruby
+inject_qawolf_instrumentation(
+  input: "./build/MyApp.ipa",              # path to the IPA produced by build_app
+  output: "./build/MyApp_instrumented.ipa" # where to write the patched IPA
+)
+```
+
+Use the `output` file in subsequent steps—e.g. pass it to `upload_to_qawolf` or deploy it to your device farm.
 
 ## Run tests for this plugin
 
