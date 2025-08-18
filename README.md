@@ -43,6 +43,7 @@ lane :build do
     )
 
     # Inject QA Wolf instrumentation (Optional and iOS only)
+    # Use https://docs.fastlane.tools/actions/resign/ to resign the IPA file before uploading.
     inject_qawolf_instrumentation(
         input: "./build/app.ipa",
         output: "./build/app_instrumented.ipa"
