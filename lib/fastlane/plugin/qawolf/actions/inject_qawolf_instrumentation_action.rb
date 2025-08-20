@@ -9,7 +9,9 @@ module Fastlane
   module Actions
     # Fastlane action that injects QA Wolf's instrumentation.dylib into an IPA
     class InjectQawolfInstrumentationAction < Action
-      DYLIB_RELEASE_URL = 'https://github.com/qawolf/qawolf-ios-resign/releases/download/v0.0.3/instrumentation.dylib'.freeze
+      # Path to the dylib that is shipped inside the gem (see lib/fastlane/plugin/qawolf/assets)
+      DYLIB_ASSET_PATH = File.expand_path('../assets/instrumentation.dylib', __dir__).freeze
+
       OPTOOL_RELEASE_URL = 'https://github.com/alexzielenski/optool/releases/download/0.1/optool.zip'.freeze
 
       def self.run(params)
@@ -108,17 +110,19 @@ module Fastlane
         platform == :ios
       end
 
+      # Copies the dylib that is bundled with this plugin into +dir+ and returns the copied path.
+      # The copy ensures we never mutate the original asset and that downstream tools can treat the
+      # file as disposable.
       def self.download_dylib(dir)
+        source = DYLIB_ASSET_PATH
         destination = File.join(dir, 'instrumentation.dylib')
-        UI.message("🐺 Downloading instrumentation.dylib from #{DYLIB_RELEASE_URL} ...")
 
-        content = fetch_with_redirect(DYLIB_RELEASE_URL)
-        File.binwrite(destination, content)
+        UI.user_error!("Embedded instrumentation.dylib not found at '#{source}'. Make sure the file is included in the gem package.") unless File.exist?(source)
 
-        UI.user_error!('Failed to download instrumentation.dylib') unless File.exist?(destination)
+        UI.message("🐺 Copying embedded instrumentation.dylib to #{destination} ...")
+        FileUtils.cp(source, destination)
+
         destination
-      rescue StandardError => e
-        UI.user_error!("Failed to download instrumentation.dylib: #{e.message}")
       end
 
       def self.download_optool(dir)

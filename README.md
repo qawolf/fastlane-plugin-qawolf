@@ -112,7 +112,8 @@ end
 
 ## Injecting instrumentation into an iOS IPA
 
-If you need QA Wolf to record crashes and additional runtime information during iOS test runs, insert our `instrumentation.dylib` into your IPA before uploading it. This can be done with the `inject_qawolf_instrumentation` action:
+If you are using `Allowlisted devices` feature of QA Wolf, inject QA Wolf iOS instrumentation so that QA Wolf platform
+can intercept iOS system calls in the physical devices and provide test data. 
 
 ```ruby
 inject_qawolf_instrumentation(
@@ -121,7 +122,7 @@ inject_qawolf_instrumentation(
 )
 ```
 
-Use the `output` file in subsequent steps—e.g. pass it to `upload_to_qawolf` or deploy it to your device farm.
+The output IPA doesn't have a valid signature so sign it again before uploading. Check https://docs.fastlane.tools/actions/resign/ 
 
 ## Run tests for this plugin
 
