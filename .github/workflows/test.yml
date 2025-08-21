@@ -2,6 +2,9 @@ name: Test
 
 on:
   push:
+    branches-ignore:
+      # Ignore PRs that update the instrumentation.dylib
+      - 'update-instrumentation-*'
 
 jobs:
   test:
