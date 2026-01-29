@@ -10,7 +10,7 @@ module Fastlane
 
     # Casing is important for the action name!
     class UploadToQawolfAction < Action
-      SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa", "aab"]
+      SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa", "aab", "deb"]
 
       def self.run(params)
         qawolf_api_key = params[:qawolf_api_key] # Required
