@@ -38,7 +38,7 @@ module Fastlane
         UI.user_error!("No file found at '#{file_path}'.") unless File.exist?(file_path)
 
         # Validate file extension.
-        extension = File.extname(file_path).sub(/^\./, '').to_lower
+        extension = File.extname(file_path).sub(/^\./, '').downcase
         unless SUPPORTED_FILE_EXTENSIONS.include?(extension)
           UI.user_error!("file_path is invalid, only files with extensions #{SUPPORTED_FILE_EXTENSIONS} are allowed to be uploaded.")
         end
