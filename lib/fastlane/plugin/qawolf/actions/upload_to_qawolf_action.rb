@@ -10,7 +10,7 @@ module Fastlane
 
     # Casing is important for the action name!
     class UploadToQawolfAction < Action
-      SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa", "aab", "deb"]
+      SUPPORTED_FILE_EXTENSIONS = ["apk", "ipa", "aab", "deb", "rpm", "appimage"]
 
       def self.run(params)
         qawolf_api_key = params[:qawolf_api_key] # Required
@@ -38,7 +38,7 @@ module Fastlane
         UI.user_error!("No file found at '#{file_path}'.") unless File.exist?(file_path)
 
         # Validate file extension.
-        extension = File.extname(file_path).sub(/^\./, '')
+        extension = File.extname(file_path).sub(/^\./, '').downcase
         unless SUPPORTED_FILE_EXTENSIONS.include?(extension)
           UI.user_error!("file_path is invalid, only files with extensions #{SUPPORTED_FILE_EXTENSIONS} are allowed to be uploaded.")
         end
