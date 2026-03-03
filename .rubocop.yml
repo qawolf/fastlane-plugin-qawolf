@@ -7,6 +7,7 @@ AllCops:
   SuggestExtensions: false
   TargetRubyVersion: 2.6
   NewCops: enable
+  UseCache: false
   Include:
     - "**/*.rb"
     - "**/*file"
