@@ -41,19 +41,19 @@ module Fastlane
           UI.user_error!("`executable_file_basename` is required")
         end
 
-        file_content = File.open(file_path, "rb")
+        run_input_path = nil
+        File.open(file_path, "rb") do |file_content|
+          headers = {
+            user_agent: "qawolf_fastlane_plugin",
+            content_type: "application/octet-stream"
+          }
 
-        headers = {
-          user_agent: "qawolf_fastlane_plugin",
-          content_type: "application/octet-stream"
-        }
+          uploaded_filename = "#{executable_file_basename}#{File.extname(file_path)}"
+          signed_url, run_input_path = get_signed_url(qawolf_api_key, qawolf_base_url, uploaded_filename)
 
-        uploaded_filename = "#{executable_file_basename}#{File.extname(file_path)}"
-        signed_url, run_input_path = get_signed_url(qawolf_api_key, qawolf_base_url, uploaded_filename)
-
-        RestClient.put(signed_url, file_content, headers)
-
-        return run_input_path
+          RestClient.put(signed_url, file_content, headers)
+        end
+        run_input_path
       rescue RestClient::ExceptionWithResponse => e
         begin
           error_response = e.response.to_s

@@ -19,7 +19,7 @@ describe Fastlane::Actions::UploadToQawolfAction do
 
     before do
       allow(File).to receive(:exist?).with(file_path).and_return(true)
-      allow(File).to receive(:open).with(file_path, "rb").and_return('empty file')
+      allow(File).to receive(:open).with(file_path, "rb").and_yield('empty file')
 
       url = URI.join(Fastlane::Helper::QawolfHelper::BASE_URL, Fastlane::Helper::QawolfHelper::SIGNED_URL_ENDPOINT)
       url.query = URI.encode_www_form({ 'file' => "#{params[:executable_file_basename]}#{File.extname(file_path)}" })
