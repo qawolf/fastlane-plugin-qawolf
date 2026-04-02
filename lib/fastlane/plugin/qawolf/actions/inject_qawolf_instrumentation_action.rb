@@ -3,6 +3,7 @@ require 'fileutils'
 require 'tmpdir'
 require 'shellwords'
 require 'net/http'
+require 'openssl'
 require 'uri'
 
 module Fastlane
@@ -129,7 +130,7 @@ module Fastlane
         destination_zip = File.join(dir, 'optool.zip')
         destination_extracted = File.join(dir, 'optool_extract')
         UI.message("🐺 Downloading optool from #{OPTOOL_RELEASE_URL} ...")
-        content = fetch_with_redirect(OPTOOL_RELEASE_URL)
+        content = fetch_https_with_redirect(OPTOOL_RELEASE_URL)
         File.binwrite(destination_zip, content)
 
         FileUtils.mkdir_p(destination_extracted)
@@ -140,13 +141,24 @@ module Fastlane
         optool_bin
       end
 
-      def self.fetch_with_redirect(url, limit = 5)
+      # Net::HTTP + OpenSSL can fail to GitHub with "unable to get certificate CRL" when CRL
+      # distribution points are unreachable; we still verify the chain and hostname, but allow that
+      # single verification error (same practical posture as common TLS stacks without strict CRL).
+      def self.apply_github_download_ssl(http)
+        http.use_ssl = true
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+        http.verify_callback = lambda do |preverify_ok, store_context|
+          preverify_ok || store_context.error == OpenSSL::X509::V_ERR_UNABLE_TO_GET_CRL
+        end
+        http
+      end
+
+      def self.fetch_https_with_redirect(url, limit = 5)
         raise 'Too many HTTP redirects' if limit.zero?
 
         uri = URI.parse(url)
-        response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == 'https') do |http|
-          http.request(Net::HTTP::Get.new(uri))
-        end
+        http = apply_github_download_ssl(Net::HTTP.new(uri.host, uri.port))
+        response = http.start { |h| h.request(Net::HTTP::Get.new(uri)) }
 
         case response
         when Net::HTTPSuccess
@@ -154,9 +166,10 @@ module Fastlane
         when Net::HTTPRedirection
           location = response['location']
           UI.message("🐺 Redirected to #{location}")
-          fetch_with_redirect(location, limit - 1)
+          next_uri = URI.join(uri, location)
+          fetch_https_with_redirect(next_uri.to_s, limit - 1)
         else
-          raise "HTTP request failed (status #{response.code})"
+          UI.user_error!("Failed to download optool (HTTP #{response.code})")
         end
       end
 
