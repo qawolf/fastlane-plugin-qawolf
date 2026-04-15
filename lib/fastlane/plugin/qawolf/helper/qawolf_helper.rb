@@ -74,6 +74,8 @@ module Fastlane
           'deployment_type' => options[:deployment_type],
           'deployment_url' => options[:deployment_url],
           'hosting_service' => options[:hosting_service],
+          'pull_request_number' => options[:pull_request_number],
+          'merge_request_number' => options[:merge_request_number],
           'sha' => options[:sha],
           'variables' => options[:variables]
         }.to_json

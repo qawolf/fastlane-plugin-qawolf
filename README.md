@@ -95,6 +95,12 @@ lane :build do
         # If configured in QA Wolf, set to GitHub or GitLab as needed
         hosting_service: "GitHub",
 
+        # Optional, the PR/MR number to link test results back to the pull/merge request.
+        # Requires hosting_service: "GitHub" to take effect.
+        pull_request_number: 123,
+        # Requires hosting_service: "GitLab" to take effect.
+        # merge_request_number: 456,
+
         # Optional, defaults to current git commit hash if available. Set to false to skip
         sha: last_git_commit[:commit_hash],
 
