@@ -67,6 +67,12 @@ module Fastlane
       end
 
       def self.notify_deploy_body(options)
+        repository = if options[:repository_name] && options[:repository_owner]
+          { 'name' => options[:repository_name], 'owner' => options[:repository_owner] }
+        elsif options[:repository_name] && options[:repository_namespace]
+          { 'name' => options[:repository_name], 'namespace' => options[:repository_namespace] }
+        end
+
         {
           'branch' => options[:branch],
           'commit_url' => options[:commit_url],
@@ -76,6 +82,7 @@ module Fastlane
           'hosting_service' => options[:hosting_service],
           'pull_request_number' => options[:pull_request_number],
           'merge_request_number' => options[:merge_request_number],
+          'repository' => repository,
           'sha' => options[:sha],
           'variables' => options[:variables]
         }.to_json
