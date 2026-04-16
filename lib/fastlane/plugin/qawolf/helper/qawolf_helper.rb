@@ -68,10 +68,10 @@ module Fastlane
 
       def self.notify_deploy_body(options)
         repository = if options[:repository_name] && options[:repository_owner]
-          { 'name' => options[:repository_name], 'owner' => options[:repository_owner] }
-        elsif options[:repository_name] && options[:repository_namespace]
-          { 'name' => options[:repository_name], 'namespace' => options[:repository_namespace] }
-        end
+                       { 'name' => options[:repository_name], 'owner' => options[:repository_owner] }
+                     elsif options[:repository_name] && options[:repository_namespace]
+                       { 'name' => options[:repository_name], 'namespace' => options[:repository_namespace] }
+                     end
 
         {
           'branch' => options[:branch],
