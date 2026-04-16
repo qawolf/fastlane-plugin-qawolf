@@ -30,6 +30,8 @@ module Fastlane
           deployment_url: params[:deployment_url],
           deduplication_key: params[:deduplication_key],
           hosting_service: params[:hosting_service],
+          pull_request_number: params[:pull_request_number],
+          merge_request_number: params[:merge_request_number],
           sha: sha,
           variables: variables.merge({ executable_environment_key => run_input_path(params) })
         }
@@ -122,6 +124,14 @@ module Fastlane
                                        optional: true,
                                        default_value: {},
                                        type: Hash),
+          FastlaneCore::ConfigItem.new(key: :pull_request_number,
+                                       description: "The GitHub pull request number associated with this deployment. Requires `hosting_service: \"GitHub\"` to take effect",
+                                       optional: true,
+                                       type: Integer),
+          FastlaneCore::ConfigItem.new(key: :merge_request_number,
+                                       description: "The GitLab merge request number associated with this deployment. Requires `hosting_service: \"GitLab\"` to take effect",
+                                       optional: true,
+                                       type: Integer),
           FastlaneCore::ConfigItem.new(key: :executable_filename,
                                        env_name: "QAWOLF_EXECUTABLE_FILENAME",
                                        description: "The filename of the executable to use in QA Wolf. Set by the `upload_to_qawolf` action",
