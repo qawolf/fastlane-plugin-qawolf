@@ -92,6 +92,9 @@ lane :build do
         # If set, will be available as `process.env.URL`
         deployment_url: nil,
 
+        # If configured in QA Wolf, set to GitHub or GitLab as needed
+        hosting_service: "GitHub",
+
         # Optional, defaults to current git commit hash if available. Set to false to skip
         sha: last_git_commit[:commit_hash],
 
