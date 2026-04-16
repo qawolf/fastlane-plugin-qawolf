@@ -95,12 +95,6 @@ lane :build do
         # If configured in QA Wolf, set to GitHub or GitLab as needed
         hosting_service: "GitHub",
 
-        # Optional, the PR/MR number to link test results back to the pull/merge request.
-        # Requires hosting_service: "GitHub" to take effect.
-        pull_request_number: 123,
-        # Requires hosting_service: "GitLab" to take effect.
-        # merge_request_number: 456,
-
         # Optional, defaults to current git commit hash if available. Set to false to skip
         sha: last_git_commit[:commit_hash],
 
@@ -114,6 +108,56 @@ lane :build do
         # executable_filename: "calculator_app_staging.ipa",
     )
 end
+```
+
+## PR/MR testing
+
+> ⚠️ PR/MR testing must be activated by QA Wolf before it will have any effect. Please reach out to your QA Wolf representative to enable this feature.
+
+When PR/MR testing is enabled, QA Wolf posts test results as a comment directly on the pull or merge request that triggered the build. This lets developers see test outcomes without leaving their code review workflow.
+
+To enable PR Testing, pass the PR/MR number together with the repository details that identify where the code lives. QA Wolf uses these to locate the correct integration and post the comment.
+
+### GitHub
+
+```ruby
+notify_deploy_qawolf(
+    qawolf_api_key: ENV["QAWOLF_API_KEY"],
+
+    # Tell QA Wolf this deployment came from a GitHub repository
+    hosting_service: "GitHub",
+
+    # The pull request number — typically available as a CI environment variable
+    pull_request_number: ENV["GITHUB_PR_NUMBER"].to_i,
+
+    # The repository where QA Wolf should post the PR comment
+    repository_name: "my-app",   # the repository name
+    repository_owner: "my-org",  # the GitHub user or organization that owns it
+
+    branch: git_branch,
+    sha: last_git_commit[:commit_hash],
+)
+```
+
+### GitLab
+
+```ruby
+notify_deploy_qawolf(
+    qawolf_api_key: ENV["QAWOLF_API_KEY"],
+
+    # Tell QA Wolf this deployment came from a GitLab repository
+    hosting_service: "GitLab",
+
+    # The merge request number — typically available as a CI environment variable
+    merge_request_number: ENV["CI_MERGE_REQUEST_IID"].to_i,
+
+    # The repository where QA Wolf should post the MR comment
+    repository_name: "my-app",        # the repository name
+    repository_namespace: "my-group", # the GitLab group or user that owns it
+
+    branch: git_branch,
+    sha: last_git_commit[:commit_hash],
+)
 ```
 
 ## Injecting instrumentation into an iOS IPA
@@ -139,6 +183,7 @@ bundle exec rake
 ```
 
 To automatically fix many of the styling issues, use
+
 ```
 bundle exec rubocop -A
 ```
@@ -167,47 +212,47 @@ The instructions below are for maintainers of this plugin.
 
 1. Clone the repository and cd into the directory
 
-    ```bash
-    git clone git@github.com:qawolf/fastlane-plugin-qawolf.git
-    cd fastlane-plugin-qawolf
-    ```
+   ```bash
+   git clone git@github.com:qawolf/fastlane-plugin-qawolf.git
+   cd fastlane-plugin-qawolf
+   ```
 
 2. Install a modern version of Ruby. By default macOS ships with v2.x. I recommend using `asdf` to install the version defined in `.tool-versions` .
-    1. [Install asdf](https://asdf-vm.com/guide/getting-started.html)
+   1. [Install asdf](https://asdf-vm.com/guide/getting-started.html)
 
-        ```bash
-        # requires that git, curl, and coreutils are installed on macOS
-        git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.1
-        # ensure asdf is loaded into PATH (also add this to your .zshrc file)
-        . "$HOME/.asdf/asdf.sh”
-        ```
+      ```bash
+      # requires that git, curl, and coreutils are installed on macOS
+      git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.1
+      # ensure asdf is loaded into PATH (also add this to your .zshrc file)
+      . "$HOME/.asdf/asdf.sh”
+      ```
 
-    2. [Install the asdf Ruby plugin](https://github.com/asdf-vm/asdf-ruby)
+   2. [Install the asdf Ruby plugin](https://github.com/asdf-vm/asdf-ruby)
 
-        ```bash
-        asdf plugin add ruby https://github.com/asdf-vm/asdf-ruby.git
-        ```
+      ```bash
+      asdf plugin add ruby https://github.com/asdf-vm/asdf-ruby.git
+      ```
 
-    3. Install the specified version of Ruby
+   3. Install the specified version of Ruby
 
-        ```bash
-        # must be run inside the plugin root folder
-        asdf install
-        # confirm the ruby version
-        ruby --version # <- should print a version matching .tool-versions
-        ```
+      ```bash
+      # must be run inside the plugin root folder
+      asdf install
+      # confirm the ruby version
+      ruby --version # <- should print a version matching .tool-versions
+      ```
 
 3. Install dependencies with the bundler CLI
 
-    ```bash
-    bundle install # may need to run `gem install bundler` first
-    ```
+   ```bash
+   bundle install # may need to run `gem install bundler` first
+   ```
 
 4. Confirm unit tests are passing (this suite will mock API calls and the file system)
 
-    ```bash
-    bundle exec rake
-    ```
+   ```bash
+   bundle exec rake
+   ```
 
 ### Use the plugin in an Android project
 
@@ -215,67 +260,67 @@ The instructions below are for maintainers of this plugin.
 2. Open the directory of the project in a terminal.
 3. [Setup a Gemfile and install fastlane](https://docs.fastlane.tools)
 
-    ```bash
-    # create Gemfile
-    cat <<EOF >> ./Gemfile
-    source "https://rubygems.org"
+   ```bash
+   # create Gemfile
+   cat <<EOF >> ./Gemfile
+   source "https://rubygems.org"
 
-    gem "fastlane"
-    EOF
+   gem "fastlane"
+   EOF
 
-    # install deps
-    bundle update
-    ```
+   # install deps
+   bundle update
+   ```
 
 4. Setup fastlane config
 
-    ```bash
-    bundle exec fastlane init
-    ```
+   ```bash
+   bundle exec fastlane init
+   ```
 
 5. [While the Android setup guide can be useful](https://docs.fastlane.tools/getting-started/android/setup/), we only care about uploading the APK to our QA Wolf platform. So the next step is to build and install our plugin. **Make sure you update the path to the plugin!**
 
-    ```bash
-    # in the plugin root directory
-    gem build fastlane-plugin-qawolf.gemspec # <- outputs a *.gem file
+   ```bash
+   # in the plugin root directory
+   gem build fastlane-plugin-qawolf.gemspec # <- outputs a *.gem file
 
-    # in the Android project root directory
-    echo 'gem "fastlane-plugin-qawolf", path: "~/path/to/fastlane-plugin-qawolf"' >> Gemfile
-    bundle install
-    ```
+   # in the Android project root directory
+   echo 'gem "fastlane-plugin-qawolf", path: "~/path/to/fastlane-plugin-qawolf"' >> Gemfile
+   bundle install
+   ```
 
 6. Time to update the `./fastlane/Fastlane` file in the Android project.
 
-    ```ruby
+   ```ruby
 
-    default_platform(:android)
+   default_platform(:android)
 
-    platform :android do
-      desc "Upload to QA Wolf"
-      lane :upload do
-        # builds an unsigned APK by default
-        # in a real setup you will need to create a signed APK (or AAB) to use it in QA Wolf
-        gradle(task: "clean assembleRelease")
+   platform :android do
+     desc "Upload to QA Wolf"
+     lane :upload do
+       # builds an unsigned APK by default
+       # in a real setup you will need to create a signed APK (or AAB) to use it in QA Wolf
+       gradle(task: "clean assembleRelease")
 
-        # relies on output of the gradle task and env var QAWOLF_API_KEY
-        # see example above for options
-        upload_to_qawolf
-        notify_deploy_qawolf
-      end
-    end
-    ```
+       # relies on output of the gradle task and env var QAWOLF_API_KEY
+       # see example above for options
+       upload_to_qawolf
+       notify_deploy_qawolf
+     end
+   end
+   ```
 
 7. Grab a team API key from staging by going to the team settings page. You can find it under “API Access”, mouseover the “Encrypted” text to copy the value. Set it as an environment variable as described below. Also set an environment variable to override the base URL to target staging instead of production. You can also target a preview environment if desired.
 
-    ```bash
-    # The API key is required to be set
-    export QAWOLF_API_KEY="qawolf_..."
-    # optionally override the base URL
-    export QAWOLF_BASE_URL="https://app.qawolf.com"
-    ```
+   ```bash
+   # The API key is required to be set
+   export QAWOLF_API_KEY="qawolf_..."
+   # optionally override the base URL
+   export QAWOLF_BASE_URL="https://app.qawolf.com"
+   ```
 
 8. Finally, run the command to build the APK and upload it to QA Wolf.
 
-    ```bash
-    bundle exec fastlane upload
-    ```
+   ```bash
+   bundle exec fastlane upload
+   ```
