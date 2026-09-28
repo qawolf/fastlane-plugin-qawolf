@@ -5,11 +5,9 @@
 `notify_deploy_qawolf` now reports deployments through the public
 `deployment.reportStatus` API instead of the legacy `deploy_success` webhook.
 
-The legacy webhook is only ever evaluated by legacy triggers. Every workspace
-onboarded onto current ("global") triggers — which is every workspace created
-recently — has no legacy trigger for the webhook to match, so a build reporting
-there recorded nothing and started no runs. Reporting through
-`deployment.reportStatus` is what current triggers evaluate.
+0.x reported to a webhook that newer workspaces have nothing listening on, so
+builds recorded nothing and started no runs. 1.0.0 reports through the API
+those workspaces do evaluate.
 
 ### Breaking
 
@@ -54,10 +52,18 @@ Passing any removed option fails with a message naming its replacement.
 ### Added
 
 - `status` (`pending`, `success`, `failure`, `inactive`), defaulting to
-  `success`, the only status that evaluates triggers.
+  `success`, the only status that evaluates triggers. Reporting `pending` and
+  then `success` only updates one deployment when both calls report the same
+  `provider_deployment_id`, so pass it explicitly where the plugin cannot
+  derive one.
+- `provider_deployment_discriminator`, appended to the derived identifier to
+  separate the deployments one CI job makes at the same time, such as the legs
+  of a build matrix. Without it, every leg of a matrix shares one deployment
+  and only the first one's runs start.
 - `service`, for naming which application was deployed when several services
   deploy into one environment.
 - `commit_message` and `commit_author_name`, shown on the deployment in QA Wolf.
+- Bitrise and Azure Pipelines are detected when deriving `provider_deployment_id`.
 - `QAWOLF_ENVIRONMENT_RUNS_URL`, set in `ENV` and the lane context from the
   `url` the API returns. It links the environment's runs page, not a page for
   this deployment.

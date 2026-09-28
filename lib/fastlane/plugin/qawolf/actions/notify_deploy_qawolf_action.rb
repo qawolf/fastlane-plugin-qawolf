@@ -16,10 +16,10 @@ module Fastlane
       STATUSES = %w[pending success failure inactive]
 
       REMOVED_OPTIONS = {
-        deployment_type: "`deployment_type` was removed in 1.0.0. Use `environment` instead, and check the value: `environment` must name an existing QA Wolf environment (its name or one of its aliases), because a name that matches nothing creates a new environment.",
-        deduplication_key: "`deduplication_key` was removed in 1.0.0. A deployment is now identified by `provider_deployment_id`, which is derived from your CI environment and can be set explicitly.",
+        deployment_type: "`deployment_type` was removed in 1.0.0. Use `environment`, naming an existing QA Wolf environment — an unmatched name creates a new one.",
+        deduplication_key: "`deduplication_key` was removed in 1.0.0. Use `provider_deployment_id`, or omit it and let the plugin derive one from your CI.",
         deployment_url: "`deployment_url` was removed in 1.0.0. Use `deploy_target` instead, which must be an http(s) URL.",
-        hosting_service: "`hosting_service` was removed in 1.0.0. QA Wolf resolves the code host from the linked repository, so pass `repository` as `owner/name` instead.",
+        hosting_service: "`hosting_service` was removed in 1.0.0. Pass `repository` as `my-org/my-app` instead.",
         repository_name: "`repository_name` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-org/my-app`.",
         repository_owner: "`repository_owner` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-org/my-app`.",
         repository_namespace: "`repository_namespace` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-group/my-subgroup/my-app`."
@@ -77,8 +77,7 @@ module Fastlane
         end
       end
 
-      # Values reach the action either through a Fastlane configuration or as a
-      # plain hash, and `branch` and `sha` may be `false` to send nothing.
+      # `branch` and `sha` may be `false`, meaning send nothing.
       def self.presence(value)
         return nil unless value.kind_of?(String)
         return nil if value.strip.empty?
@@ -89,7 +88,7 @@ module Fastlane
       def self.workspace_id(params)
         workspace_id = presence(params[:workspace_id])
         if workspace_id.nil?
-          UI.user_error!("🐺 `workspace_id` is required. Find it in the QA Wolf UI, or call `whoami` with your API key.")
+          UI.user_error!("🐺 `workspace_id` is required. Call `whoami` in the QA Wolf API with your API key to find it, or ask your QA Wolf representative.")
         end
 
         return workspace_id
@@ -310,8 +309,7 @@ module Fastlane
                                        description: "The filename of the executable to use in QA Wolf. Set by the `upload_to_qawolf` action",
                                        optional: true,
                                        type: String),
-          # Removed options, still declared so an unchanged 0.x lane fails with
-          # an explanation rather than with "Could not find option".
+          # Declared so an unchanged 0.x lane fails with an explanation.
           FastlaneCore::ConfigItem.new(key: :deployment_type,
                                        description: "Removed in 1.0.0, use `environment`",
                                        optional: true,

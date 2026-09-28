@@ -11,9 +11,12 @@ module Fastlane
       SIGNED_URL_ENDPOINT = "/api/v0/run-inputs-executables-signed-urls"
       REPORT_DEPLOYMENT_ENDPOINT = "/api/trpc/public.deployment.reportStatus"
 
-      # Mirrors the QA Wolf CI SDK, so a fastlane build and an SDK call in the same job agree on the deployment. Bitrise and Azure Pipelines are fastlane-only additions.
+      # Mirrors the QA Wolf CI SDK, so a fastlane build and an SDK call in the
+      # same job agree on the deployment. Bitrise and Azure Pipelines are
+      # fastlane-only additions.
       CI_SYSTEMS = [
-        # The run id is stable across re-runs and the attempt increments, and both are shared by every job in the workflow, so the job name separates jobs that deploy in parallel.
+        # The run id is stable across re-runs and the attempt increments, and
+        # both are shared by every job, so the job name separates the jobs.
         { name: "GitHub Actions", active: "GITHUB_ACTIONS", variables: %w[GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_JOB] },
         # Retrying a job keeps the pipeline id and mints a new job id.
         { name: "GitLab CI", active: "GITLAB_CI", variables: %w[CI_PIPELINE_ID CI_JOB_ID] },
@@ -21,14 +24,17 @@ module Fastlane
         { name: "CircleCI", active: "CIRCLECI", variables: %w[CIRCLE_WORKFLOW_ID CIRCLE_BUILD_NUM] },
         # Build id covers the whole build; job id separates jobs, retry count separates retries.
         { name: "Buildkite", active: "BUILDKITE", variables: %w[BUILDKITE_BUILD_ID BUILDKITE_JOB_ID BUILDKITE_RETRY_COUNT] },
-        # BUILD_TAG is `jenkins-${JOB_NAME}-${BUILD_NUMBER}`, and Jenkins allocates a fresh build number for every externally visible re-run.
+        # BUILD_TAG is `jenkins-${JOB_NAME}-${BUILD_NUMBER}`, and Jenkins
+        # allocates a fresh build number for every visible re-run.
         { name: "Jenkins", active: "JENKINS_URL", variables: %w[BUILD_TAG] },
         { name: "Jenkins", active: "JENKINS_HOME", variables: %w[BUILD_TAG] },
-        # Rerunning a whole pipeline mints a new build number, but rerunning only the failed steps keeps it and increments the step's run number.
+        # Rerunning a whole pipeline mints a new build number, but rerunning
+        # only the failed steps keeps it and increments the step's run number.
         { name: "Bitbucket Pipelines", active: "BITBUCKET_BUILD_NUMBER", variables: %w[BITBUCKET_BUILD_NUMBER BITBUCKET_STEP_UUID BITBUCKET_STEP_RUN_NUMBER] },
-        # The build slug identifies one build run, and a rebuild is a new build with a new slug.
+        # The build slug identifies one build run; a rebuild gets a new slug.
         { name: "Bitrise", active: "BITRISE_IO", variables: %w[BITRISE_BUILD_SLUG] },
-        # The job id is unique per job attempt but only within its pipeline, so the build id qualifies it.
+        # The job id is unique per job attempt, but only within its pipeline,
+        # so the build id qualifies it.
         { name: "Azure Pipelines", active: "TF_BUILD", variables: %w[BUILD_BUILDID SYSTEM_JOBID] }
       ]
 

@@ -72,8 +72,9 @@ lane :build do
         qawolf_api_key: "qawolf_...",
 
         # Required. The workspace to report into, also readable from QAWOLF_WORKSPACE_ID.
-        # Find it in the QA Wolf URL, or ask your QA Wolf representative.
-        workspace_id: "wrk_...",
+        # Call `whoami` in the QA Wolf API with your API key to find it, or ask
+        # your QA Wolf representative.
+        workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
 
         # Required. The name or alias of an EXISTING QA Wolf environment.
         # A value that matches no environment creates a new one, so check it first.
@@ -131,7 +132,7 @@ run id comes back.
 | Option | Required | Description |
 | --- | --- | --- |
 | `qawolf_api_key` | yes | Your QA Wolf API key. Also read from `QAWOLF_API_KEY`. |
-| `workspace_id` | yes | The workspace to report into. Also read from `QAWOLF_WORKSPACE_ID`. Required even with a team API key. |
+| `workspace_id` | yes | The workspace to report into, from `whoami` in the QA Wolf API. Also read from `QAWOLF_WORKSPACE_ID`. Required even with a team API key. |
 | `environment` | yes | The name or alias of the QA Wolf environment. Also read from `QAWOLF_ENVIRONMENT`. **A value that matches no environment creates one.** |
 | `provider_deployment_id` | no | Your identifier for this deployment. Defaults to one derived from the CI system's variables, and to a generated one when no CI system is detected. |
 | `provider_deployment_discriminator` | no | Appended to the derived identifier to separate deployments one CI job makes at the same time, such as the legs of a build matrix. |
@@ -420,12 +421,12 @@ The instructions below are for maintainers of this plugin.
    end
    ```
 
-7. Grab a team API key from staging by going to the team settings page. You can find it under “API Access”, mouseover the “Encrypted” text to copy the value. Set it as an environment variable as described below. Also set an environment variable to override the base URL to target staging instead of production. You can also target a preview environment if desired.
+7. Grab a team API key from the team settings page. You can find it under “API Access”, mouseover the “Encrypted” text to copy the value. Set it as an environment variable, together with the workspace to report into.
 
    ```bash
    # The API key and the workspace are required to be set
    export QAWOLF_API_KEY="qawolf_..."
-   export QAWOLF_WORKSPACE_ID="wrk_..."
+   export QAWOLF_WORKSPACE_ID="..."
    # the environment can be passed as an option instead
    export QAWOLF_ENVIRONMENT="Staging"
    # optionally override the base URL
