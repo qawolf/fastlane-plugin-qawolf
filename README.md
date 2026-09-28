@@ -142,11 +142,11 @@ run id comes back.
 | `executable_filename` | no | Set by `upload_to_qawolf`; set it yourself only when that action did not run in this lane. |
 | `branch` | no | Defaults to the current git branch. `false` sends nothing. |
 | `sha` | no | Defaults to the current git commit hash. `false` sends nothing. |
-| `commit_url` | no | A link to the deployed commit, for when QA Wolf cannot resolve the commit itself. |
+| `commit_url` | no | An http(s) link to the deployed commit, for when QA Wolf cannot resolve the commit itself. |
 | `commit_message` | no | The deployed commit's message. |
 | `commit_author_name` | no | The deployed commit's author. |
 | `repository` | no | The repository's full path, e.g. `my-org/my-app`, or `my-group/my-subgroup/my-app` for a GitLab project in a subgroup. Required with a PR/MR number. |
-| `pull_request_number` | no | The GitHub pull request number. Requires `repository`. |
+| `pull_request_number` | no | The GitHub pull request number. Requires `repository`. A build outside a pull request reports none. |
 | `merge_request_number` | no | The GitLab merge request number. Requires `repository`. |
 | `variables` | no | Key-value pairs exposed as `process.env` in the runs this deployment requests. |
 | `qawolf_base_url` | no | Override the QA Wolf base URL. Also read from `QAWOLF_BASE_URL`. |
@@ -239,8 +239,10 @@ notify_deploy_qawolf(
     # The repository where QA Wolf should post the PR comment, as its full path
     repository: "my-org/my-app",
 
-    # The pull request number — typically available as a CI environment variable
-    pull_request_number: ENV.fetch("GITHUB_PR_NUMBER", nil).to_i,
+    # The pull request number. GitHub Actions has no variable for it, so pass it
+    # into the job yourself, e.g. `env: PR_NUMBER: ${{ github.event.pull_request.number }}`.
+    # It is empty on a build that is not a pull request, and no number is then reported.
+    pull_request_number: ENV.fetch("PR_NUMBER", nil).to_i,
 
     branch: git_branch,
     sha: last_git_commit[:commit_hash],
@@ -258,7 +260,8 @@ notify_deploy_qawolf(
     # The repository where QA Wolf should post the MR comment, as the project's full path
     repository: "my-group/my-app",
 
-    # The merge request number — typically available as a CI environment variable
+    # The merge request number. GitLab sets it on merge request pipelines only,
+    # and no number is reported on a branch pipeline, where it is unset.
     merge_request_number: ENV.fetch("CI_MERGE_REQUEST_IID", nil).to_i,
 
     branch: git_branch,

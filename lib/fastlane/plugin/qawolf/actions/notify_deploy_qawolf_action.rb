@@ -37,7 +37,7 @@ module Fastlane
           branch: presence(params[:branch]),
           commit_author_name: presence(params[:commit_author_name]),
           commit_message: presence(params[:commit_message]),
-          commit_url: presence(params[:commit_url]),
+          commit_url: commit_url(params),
           deploy_target: deploy_target(params),
           environment: environment(params),
           environment_variables: environment_variables(params),
@@ -124,6 +124,17 @@ module Fastlane
         return deploy_target
       end
 
+      def self.commit_url(params)
+        commit_url = presence(params[:commit_url])
+        return nil if commit_url.nil?
+
+        unless commit_url.start_with?("http://", "https://")
+          UI.user_error!("🐺 `commit_url` must be an http or https URL.")
+        end
+
+        return commit_url
+      end
+
       def self.repository(params)
         repository = presence(params[:repository])
         return nil if repository.nil?
@@ -138,10 +149,12 @@ module Fastlane
       end
 
       # A GitLab merge request number is reported through the same field as a
-      # GitHub pull request number.
+      # GitHub pull request number, and a build outside any request, where the
+      # CI variable holding the number is unset, reports no number at all.
       def self.pull_request_number(params)
         number = params[:pull_request_number] || params[:merge_request_number]
         return nil if number.nil?
+        return nil unless number.to_i > 0
 
         if repository(params).nil?
           UI.user_error!("🐺 `repository` is required alongside `pull_request_number` or `merge_request_number`, because a request number only names a request within one repository.")
@@ -259,7 +272,7 @@ module Fastlane
                                        default_value: Actions.git_branch,
                                        type: Object),
           FastlaneCore::ConfigItem.new(key: :commit_url,
-                                       description: "A link to the deployed commit in your code host. Send this when QA Wolf cannot resolve the commit itself, for example when the QA Wolf GitHub App is not installed",
+                                       description: "An http(s) link to the deployed commit in your code host. Send this when QA Wolf cannot resolve the commit itself, for example when the QA Wolf GitHub App is not installed",
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :commit_message,

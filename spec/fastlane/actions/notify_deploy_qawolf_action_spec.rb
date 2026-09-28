@@ -131,6 +131,32 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
     end
 
+    context "with no merge request number set" do
+      let(:params) { super().merge(merge_request_number: nil, repository: "my-group/my-app") }
+
+      it "reports no pull request number" do
+        described_class.run(params)
+        expect(reported_input["metadata"]).not_to have_key("pullRequestNumber")
+      end
+    end
+
+    context "with a merge request number of zero" do
+      let(:params) { super().merge(merge_request_number: 0, repository: "my-group/my-app") }
+
+      it "reports no pull request number" do
+        described_class.run(params)
+        expect(reported_input["metadata"]).not_to have_key("pullRequestNumber")
+      end
+    end
+
+    context "with a commit url that is not an http URL" do
+      let(:params) { super().merge(commit_url: "my-org/my-app@abc123") }
+
+      it "fails" do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /commit_url/)
+      end
+    end
+
     context "with a GitLab subgroup repository" do
       let(:params) { super().merge(merge_request_number: 7, repository: "my-group/my-subgroup/my-app") }
 
