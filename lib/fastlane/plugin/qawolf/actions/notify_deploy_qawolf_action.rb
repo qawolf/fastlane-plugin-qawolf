@@ -157,14 +157,18 @@ module Fastlane
           .each_with_object({}) { |(key, value), result| result[key.to_s] = value.to_s }
       end
 
-      # A deployment's identity. Reports sharing one update a single deployment,
-      # and only its first `success` report evaluates triggers, so a re-run or a
-      # sibling job must not reuse the identity of another.
+      # A deployment's identity: reports sharing one update a single deployment.
       def self.provider_deployment_id(params)
         explicit = presence(params[:provider_deployment_id])
+        discriminator = presence(params[:provider_deployment_discriminator])
+
+        if !explicit.nil? && !discriminator.nil?
+          UI.user_error!("🐺 Pass either `provider_deployment_id` or `provider_deployment_discriminator`, not both. The discriminator only separates the identifiers the plugin derives.")
+        end
+
         return explicit unless explicit.nil?
 
-        detected = Helper::QawolfHelper.detect_provider_deployment_id(ENV)
+        detected = Helper::QawolfHelper.detect_provider_deployment_id(ENV, discriminator)
         return detected unless detected.nil?
 
         generated = "fastlane-#{SecureRandom.uuid}"
@@ -223,6 +227,10 @@ module Fastlane
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :provider_deployment_id,
                                        description: "Your own identifier for this deployment. Defaults to an identifier derived from the CI system's environment variables, and to a generated identifier when no supported CI system is detected. Two reports sharing one identifier update a single deployment, and only the first `success` report evaluates triggers",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :provider_deployment_discriminator,
+                                       description: "Appended to the identifier the plugin derives, to tell apart deployments made at the same time by one CI job, such as the legs of a build matrix. No CI system exposes which leg is running, so pass the platform or whatever else separates them. Cannot be combined with `provider_deployment_id`",
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :status,

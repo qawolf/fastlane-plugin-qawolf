@@ -84,8 +84,12 @@ lane :build do
         executable_environment_key: "RUN_INPUT_PATH",
 
         # Optional, defaults to an id derived from your CI system's environment variables.
-        # Set it when one CI job deploys more than once, so each deployment is distinct.
-        # provider_deployment_id: "#{ENV.fetch('GITHUB_RUN_ID', nil)}-ios",
+        # Set it to control which reports share a deployment.
+        # provider_deployment_id: "my-build-42",
+
+        # Optional. Required when one CI job deploys more than once at a time,
+        # e.g. a matrix over iOS and Android: it separates the legs' deployments.
+        # provider_deployment_discriminator: "ios",
 
         # Optional, defaults to the current git branch, if available. Set to false to skip.
         branch: git_branch,
@@ -130,6 +134,7 @@ run id comes back.
 | `workspace_id` | yes | The workspace to report into. Also read from `QAWOLF_WORKSPACE_ID`. Required even with a team API key. |
 | `environment` | yes | The name or alias of the QA Wolf environment. Also read from `QAWOLF_ENVIRONMENT`. **A value that matches no environment creates one.** |
 | `provider_deployment_id` | no | Your identifier for this deployment. Defaults to one derived from the CI system's variables, and to a generated one when no CI system is detected. |
+| `provider_deployment_discriminator` | no | Appended to the derived identifier to separate deployments one CI job makes at the same time, such as the legs of a build matrix. |
 | `status` | no | `pending`, `success`, `failure` or `inactive`. Defaults to `success`, the only status that evaluates triggers. |
 | `deploy_target` | no | The http(s) URL the deployment serves. Required when `environment` names no existing environment. |
 | `service` | no | Which application was deployed, when several deploy into one environment. |
@@ -153,13 +158,38 @@ A deployment is identified by `provider_deployment_id`, and only a deployment's
 report under the same identifier, or the second one starts nothing.
 
 The plugin derives the identifier from the CI system it detects — GitHub
-Actions, GitLab CI, CircleCI, Buildkite, Jenkins or Bitbucket Pipelines — using
-the variables that distinguish a job and an attempt from its siblings. When no
-supported CI system is detected it generates a random identifier and says so.
+Actions, GitLab CI, CircleCI, Buildkite, Jenkins, Bitbucket Pipelines, Bitrise
+or Azure Pipelines — using the variables that distinguish a job and an attempt
+from its siblings. On any other CI system, Xcode Cloud included, it generates a
+random identifier and says so; set `provider_deployment_id` there yourself.
 
-Set `provider_deployment_id` yourself when one job definition deploys more than
-once at a time — a build matrix, a loop over environments — because no CI
-system exposes which leg is running.
+### Build matrices
+
+The derived identifier is distinct per job definition and per attempt, and no
+CI system exposes which leg of a matrix is running. A matrix over iOS and
+Android therefore derives **the same identifier for both legs**: reporting into
+one environment, the second leg starts no runs and the lane still goes green;
+reporting into two environments, the second leg fails.
+
+Pass `provider_deployment_discriminator` for every job that deploys more than
+once at a time — a build matrix, a loop over environments — and the legs get
+their own deployments:
+
+```ruby
+notify_deploy_qawolf(
+    environment: "Staging",
+    # In GitHub Actions, from a `strategy.matrix` value
+    provider_deployment_discriminator: ENV.fetch("PLATFORM", nil),
+)
+```
+
+### Reporting `pending` and then `success`
+
+Two `notify_deploy_qawolf` calls only update one deployment when they report
+the same identifier. A derived identifier is the same in both calls of one CI
+job, but a generated one is not, so on an unsupported CI system pass
+`provider_deployment_id` explicitly to both calls, or the `pending` report
+never resolves and the `success` report becomes a second deployment.
 
 ## Upgrading from 0.x
 

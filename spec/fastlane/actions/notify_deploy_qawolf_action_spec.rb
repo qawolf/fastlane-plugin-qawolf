@@ -145,6 +145,20 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
         described_class.run(params)
         expect(reported_input["providerDeploymentId"]).to start_with("fastlane-")
       end
+
+      it "separates a build matrix's legs with the discriminator" do
+        allow(Fastlane::Helper::QawolfHelper).to receive(:detect_provider_deployment_id).with(ENV, "ios").and_return("18273645-2-deploy:ios")
+        described_class.run(params.merge(provider_deployment_discriminator: "ios"))
+        expect(reported_input["providerDeploymentId"]).to eq("18273645-2-deploy:ios")
+      end
+    end
+
+    context "with both a provider deployment id and a discriminator" do
+      let(:params) { super().merge(provider_deployment_discriminator: "ios") }
+
+      it "fails" do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /provider_deployment_discriminator/)
+      end
     end
 
     context "with no run input path set" do

@@ -11,28 +11,25 @@ module Fastlane
       SIGNED_URL_ENDPOINT = "/api/v0/run-inputs-executables-signed-urls"
       REPORT_DEPLOYMENT_ENDPOINT = "/api/trpc/public.deployment.reportStatus"
 
-      # The CI systems the public QA Wolf CI SDK derives a deployment identity
-      # from, in the same order and from the same variables, so a fastlane build
-      # and a CI SDK invocation of the same job agree on the deployment.
+      # Mirrors the QA Wolf CI SDK, so a fastlane build and an SDK call in the same job agree on the deployment. Bitrise and Azure Pipelines are fastlane-only additions.
       CI_SYSTEMS = [
-        # GITHUB_RUN_ID is stable across re-runs and GITHUB_RUN_ATTEMPT
-        # increments, and both are shared by every job in the workflow, so
-        # GITHUB_JOB separates jobs that deploy in parallel.
+        # The run id is stable across re-runs and the attempt increments, and both are shared by every job in the workflow, so the job name separates jobs that deploy in parallel.
         { name: "GitHub Actions", active: "GITHUB_ACTIONS", variables: %w[GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_JOB] },
         # Retrying a job keeps the pipeline id and mints a new job id.
         { name: "GitLab CI", active: "GITLAB_CI", variables: %w[CI_PIPELINE_ID CI_JOB_ID] },
         # A rerun keeps the workflow id and allocates a new build number.
         { name: "CircleCI", active: "CIRCLECI", variables: %w[CIRCLE_WORKFLOW_ID CIRCLE_BUILD_NUM] },
-        # The build id covers the whole build, so the job id separates the jobs
-        # within it and the retry count separates a job's retries.
+        # Build id covers the whole build; job id separates jobs, retry count separates retries.
         { name: "Buildkite", active: "BUILDKITE", variables: %w[BUILDKITE_BUILD_ID BUILDKITE_JOB_ID BUILDKITE_RETRY_COUNT] },
-        # BUILD_TAG is `jenkins-${JOB_NAME}-${BUILD_NUMBER}`, and Jenkins
-        # allocates a fresh build number for every externally visible re-run.
+        # BUILD_TAG is `jenkins-${JOB_NAME}-${BUILD_NUMBER}`, and Jenkins allocates a fresh build number for every externally visible re-run.
         { name: "Jenkins", active: "JENKINS_URL", variables: %w[BUILD_TAG] },
         { name: "Jenkins", active: "JENKINS_HOME", variables: %w[BUILD_TAG] },
-        # Rerunning a whole pipeline mints a new build number, but rerunning
-        # only the failed steps keeps it and increments the step's run number.
-        { name: "Bitbucket Pipelines", active: "BITBUCKET_BUILD_NUMBER", variables: %w[BITBUCKET_BUILD_NUMBER BITBUCKET_STEP_UUID BITBUCKET_STEP_RUN_NUMBER] }
+        # Rerunning a whole pipeline mints a new build number, but rerunning only the failed steps keeps it and increments the step's run number.
+        { name: "Bitbucket Pipelines", active: "BITBUCKET_BUILD_NUMBER", variables: %w[BITBUCKET_BUILD_NUMBER BITBUCKET_STEP_UUID BITBUCKET_STEP_RUN_NUMBER] },
+        # The build slug identifies one build run, and a rebuild is a new build with a new slug.
+        { name: "Bitrise", active: "BITRISE_IO", variables: %w[BITRISE_BUILD_SLUG] },
+        # The job id is unique per job attempt but only within its pipeline, so the build id qualifies it.
+        { name: "Azure Pipelines", active: "TF_BUILD", variables: %w[BUILD_BUILDID SYSTEM_JOBID] }
       ]
 
       def self.get_signed_url(qawolf_api_key, qawolf_base_url, filename)
@@ -91,16 +88,21 @@ module Fastlane
       end
 
       # An identity for the deployment, composed from the CI system's own
-      # variables. Nil when no supported CI system is running, or when the one
-      # that is did not expose every variable the identity is composed from.
-      def self.detect_provider_deployment_id(env)
+      # variables, with `discriminator` appended after a colon when given. Nil
+      # when no supported CI system is running, or when the one that is did not
+      # expose every variable the identity is composed from.
+      def self.detect_provider_deployment_id(env, discriminator = nil)
         system = CI_SYSTEMS.find { |candidate| present?(env[candidate[:active]]) }
         return nil if system.nil?
 
         values = system[:variables].map { |name| env[name] }
         return nil if values.any? { |value| !present?(value) }
 
-        return values.join("-")
+        composed = values.join("-")
+        # A colon separates the discriminator because a job id can itself
+        # contain a hyphen, so joining with one would let job "deploy-web"
+        # collide with job "deploy" discriminated by "web".
+        return present?(discriminator) ? "#{composed}:#{discriminator}" : composed
       end
 
       def self.present?(value)
