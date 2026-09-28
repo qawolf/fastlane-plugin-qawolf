@@ -151,6 +151,31 @@ module Fastlane
         return deployment
       end
 
+      # The error the API refused with, unwrapped from the `json` envelope when
+      # it has one. Nil for a body that carries no error, such as a proxy's.
+      def self.report_error(response)
+        body = JSON.parse(response.to_s)
+        error = body.kind_of?(Hash) ? body['error'] : nil
+        return nil unless error.kind_of?(Hash)
+
+        return error['json'].kind_of?(Hash) ? error['json'] : error
+      rescue StandardError
+        return nil
+      end
+
+      # A refusal from the API, as one sentence plus the event id to quote to
+      # QA Wolf support.
+      def self.report_error_message(response)
+        error = report_error(response)
+        return response.to_s if error.nil?
+
+        data = error['data']
+        event_id = data.kind_of?(Hash) ? data['eventId'] : nil
+        message = present?(error['message']) ? error['message'] : response.to_s
+
+        return present?(event_id) ? "#{message} (Event ID: #{event_id})" : message
+      end
+
       # Reports a deployment status to QA Wolf, which evaluates the workspace's
       # triggers and starts runs asynchronously.
       # Params :
@@ -171,14 +196,13 @@ module Fastlane
         return parse_report_response(response)
       rescue RestClient::ExceptionWithResponse => e
         begin
-          error_response = e.response.to_s
+          error_response = report_error_message(e.response)
         rescue StandardError
           error_response = "Internal server error"
         end
-        # Give error if request failed.
-        UI.user_error!("Failed to report deployment!!! Request failed. Reason : #{error_response}")
+        UI.user_error!("🐺 QA Wolf refused the deployment report: #{error_response}")
       rescue StandardError => e
-        UI.user_error!("Failed to report deployment!!! Something went wrong. Reason : #{e.message}")
+        UI.user_error!("🐺 Failed to report the deployment to QA Wolf: #{e.message}")
       end
     end
   end

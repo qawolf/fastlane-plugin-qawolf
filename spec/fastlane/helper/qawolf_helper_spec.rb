@@ -1,4 +1,20 @@
 describe Fastlane::Helper::QawolfHelper do
+  describe "#report_error_message" do
+    it "reads the message and the event id" do
+      body = { error: { json: { code: "BAD_REQUEST", message: "Number must be greater than 0", data: { eventId: "evt_1" } } } }.to_json
+      expect(described_class.report_error_message(body)).to eq("Number must be greater than 0 (Event ID: evt_1)")
+    end
+
+    it "reads a message sent without an event id" do
+      body = { error: { message: "Unauthorized" } }.to_json
+      expect(described_class.report_error_message(body)).to eq("Unauthorized")
+    end
+
+    it "falls back to the body it cannot read" do
+      expect(described_class.report_error_message("upstream timeout")).to eq("upstream timeout")
+    end
+  end
+
   describe "#detect_provider_deployment_id" do
     let(:github_env) do
       {

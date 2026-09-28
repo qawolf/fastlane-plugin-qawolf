@@ -13,6 +13,12 @@ there recorded nothing and started no runs. Reporting through
 
 ### Breaking
 
+- **A deployment that matches no trigger now succeeds.** 0.x failed the lane
+  with "no matched trigger". 1.0.0 records the deployment, starts no runs and
+  still succeeds — the lane goes green while nothing is tested. Before
+  upgrading, confirm with your QA Wolf representative that a trigger exists for
+  this deployment, and check the `environment` value: a name matching no
+  environment creates one, which no trigger is attached to.
 - **`workspace_id` is new and required.** A team API key does not imply the
   workspace, so every call must name it. It can also come from the
   `QAWOLF_WORKSPACE_ID` environment variable.
