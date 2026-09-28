@@ -1,52 +1,175 @@
 require 'fastlane/action'
 require 'fastlane_core'
+require 'securerandom'
 require_relative '../helper/qawolf_helper'
 
 module Fastlane
   module Actions
     module SharedValues
-      QAWOLF_RUN_ID = :QAWOLF_RUN_ID
+      QAWOLF_DEPLOYMENT_ID = :QAWOLF_DEPLOYMENT_ID
+      QAWOLF_ENVIRONMENT_RUNS_URL = :QAWOLF_ENVIRONMENT_RUNS_URL
     end
 
     # Casing is important for the action name!
     class NotifyDeployQawolfAction < Action
       BASE_PATH = "/home/wolf/run-inputs-executables/"
+      STATUSES = %w[pending success failure inactive]
+
+      REMOVED_OPTIONS = {
+        deployment_type: "`deployment_type` was removed in 1.0.0. Use `environment` instead, and check the value: `environment` must name an existing QA Wolf environment (its name or one of its aliases), because a name that matches nothing creates a new environment.",
+        deduplication_key: "`deduplication_key` was removed in 1.0.0. A deployment is now identified by `provider_deployment_id`, which is derived from your CI environment and can be set explicitly.",
+        deployment_url: "`deployment_url` was removed in 1.0.0. Use `deploy_target` instead, which must be an http(s) URL.",
+        hosting_service: "`hosting_service` was removed in 1.0.0. QA Wolf resolves the code host from the linked repository, so pass `repository` as `owner/name` instead.",
+        repository_name: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab).",
+        repository_owner: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab).",
+        repository_namespace: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab)."
+      }
 
       def self.run(params)
+        reject_removed_options(params)
+
         qawolf_api_key = params[:qawolf_api_key] # Required
         qawolf_base_url = params[:qawolf_base_url]
 
-        UI.message("🐺 Calling QA Wolf deploy success webhook...")
-
-        variables = params[:variables] || {}
-        executable_environment_key = params[:executable_environment_key]
-        branch = params[:branch] if params[:branch].kind_of?(String) && !params[:branch].empty?
-        sha = params[:sha] if params[:sha].kind_of?(String) && !params[:sha].empty?
+        UI.message("🐺 Reporting the deployment to QA Wolf...")
 
         options = {
-          branch: branch,
-          commit_url: params[:commit_url],
-          deployment_type: params[:deployment_type],
-          deployment_url: params[:deployment_url],
-          deduplication_key: params[:deduplication_key],
-          hosting_service: params[:hosting_service],
-          pull_request_number: params[:pull_request_number],
-          merge_request_number: params[:merge_request_number],
-          repository_name: params[:repository_name],
-          repository_owner: params[:repository_owner],
-          repository_namespace: params[:repository_namespace],
-          sha: sha,
-          variables: variables.merge({ executable_environment_key => run_input_path(params) })
+          branch: presence(params[:branch]),
+          commit_author_name: presence(params[:commit_author_name]),
+          commit_message: presence(params[:commit_message]),
+          commit_url: presence(params[:commit_url]),
+          deploy_target: deploy_target(params),
+          environment: environment(params),
+          environment_variables: environment_variables(params),
+          provider_deployment_id: provider_deployment_id(params),
+          pull_request_number: pull_request_number(params),
+          repository: repository(params),
+          service: presence(params[:service]),
+          sha: presence(params[:sha]),
+          status: status(params),
+          workspace_id: workspace_id(params)
         }
 
-        run_id = Helper::QawolfHelper.notify_deploy(qawolf_api_key, qawolf_base_url, options)
+        deployment = Helper::QawolfHelper.report_deployment(qawolf_api_key, qawolf_base_url, options)
 
-        ENV["QAWOLF_RUN_ID"] = run_id
+        deployment_id = deployment["id"]
+        runs_url = deployment["url"]
 
-        UI.success("🐺 QA Wolf triggered run: #{run_id}")
-        UI.success("🐺 Setting environment variable QAWOLF_RUN_ID = #{run_id}")
+        ENV["QAWOLF_DEPLOYMENT_ID"] = deployment_id
+        Actions.lane_context[SharedValues::QAWOLF_DEPLOYMENT_ID] = deployment_id
 
-        Actions.lane_context[SharedValues::QAWOLF_RUN_ID] = run_id
+        UI.success("🐺 QA Wolf recorded deployment #{deployment_id} as #{deployment['status']}")
+        UI.success("🐺 Setting environment variable QAWOLF_DEPLOYMENT_ID = #{deployment_id}")
+        UI.message("🐺 Runs matching your triggers start asynchronously, they are not part of this response.")
+
+        if runs_url
+          ENV["QAWOLF_ENVIRONMENT_RUNS_URL"] = runs_url
+          Actions.lane_context[SharedValues::QAWOLF_ENVIRONMENT_RUNS_URL] = runs_url
+          UI.message("🐺 Runs for this environment: #{runs_url}")
+        end
+
+        return deployment_id
+      end
+
+      def self.reject_removed_options(params)
+        REMOVED_OPTIONS.each do |key, message|
+          UI.user_error!("🐺 #{message}") unless params[key].nil?
+        end
+      end
+
+      # Values reach the action either through a Fastlane configuration or as a
+      # plain hash, and `branch` and `sha` may be `false` to send nothing.
+      def self.presence(value)
+        return nil unless value.kind_of?(String)
+        return nil if value.strip.empty?
+
+        return value
+      end
+
+      def self.workspace_id(params)
+        workspace_id = presence(params[:workspace_id])
+        if workspace_id.nil?
+          UI.user_error!("🐺 `workspace_id` is required. Find it in the QA Wolf UI, or call `whoami` with your API key.")
+        end
+
+        return workspace_id
+      end
+
+      def self.environment(params)
+        environment = presence(params[:environment])
+        if environment.nil?
+          UI.user_error!("🐺 `environment` is required. It must name an existing QA Wolf environment (its name or one of its aliases), because a name that matches nothing creates a new environment.")
+        end
+
+        return environment
+      end
+
+      def self.status(params)
+        status = presence(params[:status]) || "success"
+        unless STATUSES.include?(status)
+          UI.user_error!("🐺 `status` must be one of #{STATUSES.join(', ')}.")
+        end
+
+        return status
+      end
+
+      def self.deploy_target(params)
+        deploy_target = presence(params[:deploy_target])
+        return nil if deploy_target.nil?
+
+        unless deploy_target.start_with?("http://", "https://")
+          UI.user_error!("🐺 `deploy_target` must be an http or https URL.")
+        end
+
+        return deploy_target
+      end
+
+      def self.repository(params)
+        repository = presence(params[:repository])
+        return nil if repository.nil?
+
+        unless repository.count("/") == 1 && !repository.start_with?("/") && !repository.end_with?("/")
+          UI.user_error!("🐺 `repository` must be `owner/name` (GitHub) or `group/name` (GitLab).")
+        end
+
+        return repository
+      end
+
+      # A GitLab merge request number is reported through the same field as a
+      # GitHub pull request number.
+      def self.pull_request_number(params)
+        number = params[:pull_request_number] || params[:merge_request_number]
+        return nil if number.nil?
+
+        if repository(params).nil?
+          UI.user_error!("🐺 `repository` is required alongside `pull_request_number` or `merge_request_number`, because a request number only names a request within one repository.")
+        end
+
+        return number.to_i
+      end
+
+      def self.environment_variables(params)
+        variables = params[:variables] || {}
+        executable_environment_key = params[:executable_environment_key]
+
+        variables
+          .merge({ executable_environment_key => run_input_path(params) })
+          .each_with_object({}) { |(key, value), result| result[key.to_s] = value.to_s }
+      end
+
+      # A deployment's identity. Reports sharing one update a single deployment,
+      # and only its first `success` report evaluates triggers, so a re-run or a
+      # sibling job must not reuse the identity of another.
+      def self.provider_deployment_id(params)
+        explicit = presence(params[:provider_deployment_id])
+        return explicit unless explicit.nil?
+
+        detected = Helper::QawolfHelper.detect_provider_deployment_id(ENV)
+        return detected unless detected.nil?
+
+        generated = "fastlane-#{SecureRandom.uuid}"
+        UI.important("🐺 No supported CI system was detected, so this deployment is reported under a generated id: #{generated}. Set `provider_deployment_id` to control it.")
+        return generated
       end
 
       def self.run_input_path(params)
@@ -58,7 +181,7 @@ module Fastlane
       end
 
       def self.description
-        "Fastlane plugin for QA Wolf integration to trigger test runs."
+        "Fastlane plugin for QA Wolf integration to report deployments."
       end
 
       def self.authors
@@ -66,12 +189,13 @@ module Fastlane
       end
 
       def self.details
-        "Calls the QA Wolf deployment success webhook to trigger test runs. Requires the `upload_to_qawolf` action to be run first."
+        "Reports a deployment to QA Wolf through the public `deployment.reportStatus` API, which evaluates your triggers and starts the matching runs asynchronously. Requires the `upload_to_qawolf` action to be run first."
       end
 
       def self.output
         [
-          ['QAWOLF_RUN_ID', 'The ID of the run triggered in QA Wolf.']
+          ['QAWOLF_DEPLOYMENT_ID', 'The ID of the deployment reported to QA Wolf.'],
+          ['QAWOLF_ENVIRONMENT_RUNS_URL', "The URL of the environment's runs page in QA Wolf."]
         ]
       end
 
@@ -87,6 +211,33 @@ module Fastlane
                                        description: "Your QA Wolf base URL",
                                        optional: true,
                                        type: String),
+          FastlaneCore::ConfigItem.new(key: :workspace_id,
+                                       env_name: "QAWOLF_WORKSPACE_ID",
+                                       description: "The QA Wolf workspace to report the deployment into. Required, even with a team API key",
+                                       optional: false,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :environment,
+                                       env_name: "QAWOLF_ENVIRONMENT",
+                                       description: "The name or alias of the QA Wolf environment the deployment reports into. A value that matches no environment creates one, so check it against the environments in your workspace",
+                                       optional: false,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :provider_deployment_id,
+                                       description: "Your own identifier for this deployment. Defaults to an identifier derived from the CI system's environment variables, and to a generated identifier when no supported CI system is detected. Two reports sharing one identifier update a single deployment, and only the first `success` report evaluates triggers",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :status,
+                                       description: "The deployment lifecycle status: `pending`, `success`, `failure` or `inactive`. Defaults to `success`, which is the status that evaluates triggers",
+                                       optional: true,
+                                       default_value: "success",
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :deploy_target,
+                                       description: "The http(s) URL the deployment serves. Required when `environment` names no existing environment, because the created environment serves it",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :service,
+                                       description: "Which application was deployed, e.g. `checkout-api`, when several services deploy into one environment",
+                                       optional: true,
+                                       type: String),
           FastlaneCore::ConfigItem.new(key: :executable_environment_key,
                                        description: "Sets the environment key to use for the executable. Will alias the executable file's absolute path in tests to, for example, `process.env.RUN_INPUT_PATH` Defaults to `RUN_INPUT_PATH`",
                                        optional: true,
@@ -98,23 +249,15 @@ module Fastlane
                                        default_value: Actions.git_branch,
                                        type: Object),
           FastlaneCore::ConfigItem.new(key: :commit_url,
-                                       description: "If you do not specify a hosting service, include this and the `sha` option to ensure the commit hash is a clickable link in QA Wolf",
+                                       description: "A link to the deployed commit in your code host. Send this when QA Wolf cannot resolve the commit itself, for example when the QA Wolf GitHub App is not installed",
                                        optional: true,
                                        type: String),
-          FastlaneCore::ConfigItem.new(key: :deduplication_key,
-                                       description: "By default, new runs will cancel ongoing runs if the `branch` and `environment` combination is matched, so setting this will instead cancel runs that have the same key",
+          FastlaneCore::ConfigItem.new(key: :commit_message,
+                                       description: "The message of the deployed commit. The QA Wolf deployments list shows its first line",
                                        optional: true,
                                        type: String),
-          FastlaneCore::ConfigItem.new(key: :deployment_type,
-                                       description: "Arbitrary string to describe the deployment type. Configured in the QA Wolf UI when creating deployment triggers",
-                                       optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :deployment_url,
-                                       description: "When set, will be available as `process.env.URL` in tests",
-                                       optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :hosting_service,
-                                       description: "GitHub, GitLab, etc. Must be configured in QA Wolf",
+          FastlaneCore::ConfigItem.new(key: :commit_author_name,
+                                       description: "The display name of the person who authored the deployed commit",
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :sha,
@@ -123,33 +266,55 @@ module Fastlane
                                        default_value: Actions.last_git_commit_hash(false),
                                        type: Object),
           FastlaneCore::ConfigItem.new(key: :variables,
-                                       description: "Optional key-value pairs to pass to the test run. These will be available as `process.env` in tests",
+                                       description: "Optional key-value pairs to pass to the runs this deployment requests. These will be available as `process.env` in tests, and replace the values a previous report stored",
                                        optional: true,
                                        default_value: {},
                                        type: Hash),
+          FastlaneCore::ConfigItem.new(key: :repository,
+                                       description: "The repository the deployed commit lives in, as `owner/name` (GitHub) or `group/name` (GitLab). Required alongside `pull_request_number` or `merge_request_number`",
+                                       optional: true,
+                                       type: String),
           FastlaneCore::ConfigItem.new(key: :pull_request_number,
-                                       description: "The GitHub pull request number associated with this deployment. Requires `hosting_service: \"GitHub\"` to take effect",
+                                       description: "The GitHub pull request number associated with this deployment. Requires `repository`",
                                        optional: true,
                                        type: Integer),
           FastlaneCore::ConfigItem.new(key: :merge_request_number,
-                                       description: "The GitLab merge request number associated with this deployment. Requires `hosting_service: \"GitLab\"` to take effect",
+                                       description: "The GitLab merge request number associated with this deployment. Requires `repository`",
                                        optional: true,
                                        type: Integer),
-          FastlaneCore::ConfigItem.new(key: :repository_name,
-                                       description: "The repository name (e.g. `my-app`). Required alongside `repository_owner` (GitHub) or `repository_namespace` (GitLab) for PR/MR linking to work",
-                                       optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :repository_owner,
-                                       description: "The GitHub repository owner (user or organization, e.g. `my-org`). Use with `repository_name` and `hosting_service: \"GitHub\"`",
-                                       optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :repository_namespace,
-                                       description: "The GitLab repository namespace (group or user, e.g. `my-group`). Use with `repository_name` and `hosting_service: \"GitLab\"`",
-                                       optional: true,
-                                       type: String),
           FastlaneCore::ConfigItem.new(key: :executable_filename,
                                        env_name: "QAWOLF_EXECUTABLE_FILENAME",
                                        description: "The filename of the executable to use in QA Wolf. Set by the `upload_to_qawolf` action",
+                                       optional: true,
+                                       type: String),
+          # Removed options, still declared so an unchanged 0.x lane fails with
+          # an explanation rather than with "Could not find option".
+          FastlaneCore::ConfigItem.new(key: :deployment_type,
+                                       description: "Removed in 1.0.0, use `environment`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :deduplication_key,
+                                       description: "Removed in 1.0.0, use `provider_deployment_id`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :deployment_url,
+                                       description: "Removed in 1.0.0, use `deploy_target`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :hosting_service,
+                                       description: "Removed in 1.0.0, QA Wolf resolves the code host from `repository`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :repository_name,
+                                       description: "Removed in 1.0.0, use `repository`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :repository_owner,
+                                       description: "Removed in 1.0.0, use `repository`",
+                                       optional: true,
+                                       type: String),
+          FastlaneCore::ConfigItem.new(key: :repository_namespace,
+                                       description: "Removed in 1.0.0, use `repository`",
                                        optional: true,
                                        type: String)
         ]
@@ -163,16 +328,22 @@ module Fastlane
 
       def self.example_code
         [
-          'notify_deploy_qawolf',
           'notify_deploy_qawolf(
             qawolf_api_key: ENV["QAWOLF_API_KEY"],
+            workspace_id: ENV["QAWOLF_WORKSPACE_ID"],
+            environment: "Staging"
+           )',
+          'notify_deploy_qawolf(
+            qawolf_api_key: ENV["QAWOLF_API_KEY"],
+            workspace_id: ENV["QAWOLF_WORKSPACE_ID"],
+            environment: "Staging",
             executable_environment_key: "MY_APP",
             executable_filename: "<FILENAME>",
+            provider_deployment_id: "<UNIQUE_PER_BUILD_ID>",
             branch: "<BRANCH_NAME>",
             commit_url: "<URL>",
-            deployment_type: "<DEPLOYMENT_TYPE>",
-            deployment_url: "<URL>",
-            hosting_service: "GitHub|GitLab",
+            repository: "my-org/my-app",
+            pull_request_number: 123,
             sha: "<SHA>"
            )'
         ]
