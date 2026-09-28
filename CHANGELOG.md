@@ -40,7 +40,7 @@ there recorded nothing and started no runs. Reporting through
   because the environment created to hold the deployment serves it.
 - **`hosting_service`, `repository_name`, `repository_owner` and
   `repository_namespace` are removed**, replaced by a single `repository`
-  option holding `owner/name` (GitHub) or `group/name` (GitLab). QA Wolf
+  option holding the repository's full path, e.g. `my-org/my-app`. QA Wolf
   resolves the code host from the repository you linked to your workspace.
 
 Passing any removed option fails with a message naming its replacement.

@@ -20,9 +20,9 @@ module Fastlane
         deduplication_key: "`deduplication_key` was removed in 1.0.0. A deployment is now identified by `provider_deployment_id`, which is derived from your CI environment and can be set explicitly.",
         deployment_url: "`deployment_url` was removed in 1.0.0. Use `deploy_target` instead, which must be an http(s) URL.",
         hosting_service: "`hosting_service` was removed in 1.0.0. QA Wolf resolves the code host from the linked repository, so pass `repository` as `owner/name` instead.",
-        repository_name: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab).",
-        repository_owner: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab).",
-        repository_namespace: "`repository_name`, `repository_owner` and `repository_namespace` were removed in 1.0.0. Pass a single `repository` option instead, as `owner/name` (GitHub) or `group/name` (GitLab)."
+        repository_name: "`repository_name` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-org/my-app`.",
+        repository_owner: "`repository_owner` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-org/my-app`.",
+        repository_namespace: "`repository_namespace` was removed in 1.0.0. Pass a single `repository` instead, e.g. `my-group/my-subgroup/my-app`."
       }
 
       def self.run(params)
@@ -128,8 +128,10 @@ module Fastlane
         repository = presence(params[:repository])
         return nil if repository.nil?
 
-        unless repository.count("/") == 1 && !repository.start_with?("/") && !repository.end_with?("/")
-          UI.user_error!("🐺 `repository` must be `owner/name` (GitHub) or `group/name` (GitLab).")
+        # A GitLab project in a subgroup has more than two segments.
+        segments = repository.split("/", -1)
+        unless segments.length >= 2 && segments.none? { |segment| segment.strip.empty? }
+          UI.user_error!("🐺 `repository` must be the repository's full path, e.g. `my-org/my-app` or `my-group/my-subgroup/my-app`.")
         end
 
         return repository
@@ -279,7 +281,7 @@ module Fastlane
                                        default_value: {},
                                        type: Hash),
           FastlaneCore::ConfigItem.new(key: :repository,
-                                       description: "The repository the deployed commit lives in, as `owner/name` (GitHub) or `group/name` (GitLab). Required alongside `pull_request_number` or `merge_request_number`",
+                                       description: "The repository the deployed commit lives in, as its full path: `my-org/my-app` on GitHub, `my-group/my-subgroup/my-app` for a GitLab project in a subgroup. Required alongside `pull_request_number` or `merge_request_number`",
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :pull_request_number,

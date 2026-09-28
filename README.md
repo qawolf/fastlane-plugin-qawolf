@@ -145,7 +145,7 @@ run id comes back.
 | `commit_url` | no | A link to the deployed commit, for when QA Wolf cannot resolve the commit itself. |
 | `commit_message` | no | The deployed commit's message. |
 | `commit_author_name` | no | The deployed commit's author. |
-| `repository` | no | `owner/name` (GitHub) or `group/name` (GitLab). Required with a PR/MR number. |
+| `repository` | no | The repository's full path, e.g. `my-org/my-app`, or `my-group/my-subgroup/my-app` for a GitLab project in a subgroup. Required with a PR/MR number. |
 | `pull_request_number` | no | The GitHub pull request number. Requires `repository`. |
 | `merge_request_number` | no | The GitLab merge request number. Requires `repository`. |
 | `variables` | no | Key-value pairs exposed as `process.env` in the runs this deployment requests. |
@@ -236,7 +236,7 @@ notify_deploy_qawolf(
     workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
     environment: "Staging",
 
-    # The repository where QA Wolf should post the PR comment, as owner/name
+    # The repository where QA Wolf should post the PR comment, as its full path
     repository: "my-org/my-app",
 
     # The pull request number — typically available as a CI environment variable
@@ -255,7 +255,7 @@ notify_deploy_qawolf(
     workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
     environment: "Staging",
 
-    # The repository where QA Wolf should post the MR comment, as group/name
+    # The repository where QA Wolf should post the MR comment, as the project's full path
     repository: "my-group/my-app",
 
     # The merge request number — typically available as a CI environment variable

@@ -131,6 +131,31 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
     end
 
+    context "with a GitLab subgroup repository" do
+      let(:params) { super().merge(merge_request_number: 7, repository: "my-group/my-subgroup/my-app") }
+
+      it "reports the full path" do
+        described_class.run(params)
+        expect(reported_input["metadata"]["repository"]).to eq("my-group/my-subgroup/my-app")
+      end
+    end
+
+    context "with a malformed repository" do
+      let(:params) { super().merge(repository: "my-app") }
+
+      it "fails" do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /repository/)
+      end
+    end
+
+    context "with a repository holding an empty segment" do
+      let(:params) { super().merge(repository: "my-org/") }
+
+      it "fails" do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /repository/)
+      end
+    end
+
     context "with no provider deployment id given" do
       let(:params) { super().merge(provider_deployment_id: nil) }
 
