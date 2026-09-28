@@ -131,6 +131,33 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
     end
 
+    context "with the action's own configuration rather than a hash" do
+      let(:config) do
+        ENV["QAWOLF_EXECUTABLE_FILENAME"] = "file.apk"
+        FastlaneCore::Configuration.create(
+          described_class.available_options,
+          {
+            qawolf_api_key: "api_key",
+            workspace_id: "workspace_id",
+            environment: "Staging",
+            provider_deployment_id: "provider_deployment_id"
+          }
+        )
+      end
+
+      after { ENV.delete("QAWOLF_EXECUTABLE_FILENAME") }
+
+      it "reports the executable upload_to_qawolf set in the environment" do
+        described_class.run(config)
+        expect(reported_input["environmentVariables"]).to eq("RUN_INPUT_PATH" => "/home/wolf/run-inputs-executables/file.apk")
+      end
+
+      it "reports the default status" do
+        described_class.run(config)
+        expect(reported_input["status"]).to eq("success")
+      end
+    end
+
     context "with no merge request number set" do
       let(:params) { super().merge(merge_request_number: nil, repository: "my-group/my-app") }
 
