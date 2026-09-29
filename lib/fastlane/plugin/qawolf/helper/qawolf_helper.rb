@@ -9,7 +9,34 @@ module Fastlane
     class QawolfHelper
       BASE_URL = "https://app.qawolf.com"
       SIGNED_URL_ENDPOINT = "/api/v0/run-inputs-executables-signed-urls"
-      WEBHOOK_DEPLOY_SUCCESS_ENDPOINT = "/api/webhooks/deploy_success"
+      REPORT_DEPLOYMENT_ENDPOINT = "/api/trpc/public.deployment.reportStatus"
+
+      # Mirrors the QA Wolf CI SDK, so a fastlane build and an SDK call in the
+      # same job agree on the deployment. Bitrise and Azure Pipelines are
+      # fastlane-only additions.
+      CI_SYSTEMS = [
+        # The run id is stable across re-runs and the attempt increments, and
+        # both are shared by every job, so the job name separates the jobs.
+        { name: "GitHub Actions", active: "GITHUB_ACTIONS", variables: %w[GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_JOB] },
+        # Retrying a job keeps the pipeline id and mints a new job id.
+        { name: "GitLab CI", active: "GITLAB_CI", variables: %w[CI_PIPELINE_ID CI_JOB_ID] },
+        # A rerun keeps the workflow id and allocates a new build number.
+        { name: "CircleCI", active: "CIRCLECI", variables: %w[CIRCLE_WORKFLOW_ID CIRCLE_BUILD_NUM] },
+        # Build id covers the whole build; job id separates jobs, retry count separates retries.
+        { name: "Buildkite", active: "BUILDKITE", variables: %w[BUILDKITE_BUILD_ID BUILDKITE_JOB_ID BUILDKITE_RETRY_COUNT] },
+        # BUILD_TAG is `jenkins-${JOB_NAME}-${BUILD_NUMBER}`, and Jenkins
+        # allocates a fresh build number for every visible re-run.
+        { name: "Jenkins", active: "JENKINS_URL", variables: %w[BUILD_TAG] },
+        { name: "Jenkins", active: "JENKINS_HOME", variables: %w[BUILD_TAG] },
+        # Rerunning a whole pipeline mints a new build number, but rerunning
+        # only the failed steps keeps it and increments the step's run number.
+        { name: "Bitbucket Pipelines", active: "BITBUCKET_BUILD_NUMBER", variables: %w[BITBUCKET_BUILD_NUMBER BITBUCKET_STEP_UUID BITBUCKET_STEP_RUN_NUMBER] },
+        # The build slug identifies one build run; a rebuild gets a new slug.
+        { name: "Bitrise", active: "BITRISE_IO", variables: %w[BITRISE_BUILD_SLUG] },
+        # The job id is unique per job attempt, but only within its pipeline,
+        # so the build id qualifies it.
+        { name: "Azure Pipelines", active: "TF_BUILD", variables: %w[BUILD_BUILDID SYSTEM_JOBID] }
+      ]
 
       def self.get_signed_url(qawolf_api_key, qawolf_base_url, filename)
         headers = {
@@ -66,80 +93,122 @@ module Fastlane
         UI.user_error!("App upload failed!!! Reason : #{e.message}")
       end
 
-      def self.notify_deploy_body(options)
-        repository = if options[:repository_name] && options[:repository_owner]
-                       { 'name' => options[:repository_name], 'owner' => options[:repository_owner] }
-                     elsif options[:repository_name] && options[:repository_namespace]
-                       { 'name' => options[:repository_name], 'namespace' => options[:repository_namespace] }
-                     end
+      # An identity for the deployment, composed from the CI system's own
+      # variables, with `discriminator` appended after a colon when given. Nil
+      # when no supported CI system is running, or when the one that is did not
+      # expose every variable the identity is composed from.
+      def self.detect_provider_deployment_id(env, discriminator = nil)
+        system = CI_SYSTEMS.find { |candidate| present?(env[candidate[:active]]) }
+        return nil if system.nil?
 
-        {
-          'branch' => options[:branch],
-          'commit_url' => options[:commit_url],
-          'deduplication_key' => options[:deduplication_key],
-          'deployment_type' => options[:deployment_type],
-          'deployment_url' => options[:deployment_url],
-          'hosting_service' => options[:hosting_service],
-          'pull_request_number' => options[:pull_request_number],
-          'merge_request_number' => options[:merge_request_number],
-          'repository' => repository,
-          'sha' => options[:sha],
-          'variables' => options[:variables]
-        }.to_json
+        values = system[:variables].map { |name| env[name] }
+        return nil if values.any? { |value| !present?(value) }
+
+        composed = values.join("-")
+        # A colon separates the discriminator because a job id can itself
+        # contain a hyphen, so joining with one would let job "deploy-web"
+        # collide with job "deploy" discriminated by "web".
+        return present?(discriminator) ? "#{composed}:#{discriminator}" : composed
       end
 
-      def self.process_notify_response(response)
-        response_json = JSON.parse(response.to_s)
+      def self.present?(value)
+        value.kind_of?(String) && !value.strip.empty?
+      end
 
-        results = response_json["results"]
+      # The `deployment.reportStatus` input, wrapped in the envelope the API
+      # reads it from.
+      def self.report_deployment_body(options)
+        metadata = {
+          'commitAuthorName' => options[:commit_author_name],
+          'commitMessage' => options[:commit_message],
+          'commitSha' => options[:sha],
+          'commitUrl' => options[:commit_url],
+          'pullRequestNumber' => options[:pull_request_number],
+          'ref' => options[:branch],
+          'repository' => options[:repository]
+        }.compact
 
-        failed_trigger = get_failed_trigger(results)
-        success_trigger = get_success_trigger(results)
+        input = {
+          'deployTarget' => options[:deploy_target],
+          'environment' => options[:environment] ? { 'name' => options[:environment] } : nil,
+          'environmentVariables' => options[:environment_variables],
+          'metadata' => metadata.empty? ? nil : metadata,
+          'providerDeploymentId' => options[:provider_deployment_id],
+          'service' => options[:service],
+          'status' => options[:status],
+          'workspaceId' => options[:workspace_id]
+        }.compact
 
-        if failed_trigger.nil? && success_trigger.nil?
-          raise "no matched trigger, reach out to QA Wolf support"
-        elsif failed_trigger.nil? == false
-          raise failed_trigger["failure_reason"]
+        { 'json' => input }.to_json
+      end
+
+      # The reported deployment, as `{ "id", "status", "url" }`.
+      def self.parse_report_response(response)
+        body = JSON.parse(response.to_s)
+        data = body.kind_of?(Hash) ? body.dig('result', 'data') : nil
+        # The API wraps a payload that needs it in a `json` envelope.
+        payload = data.kind_of?(Hash) && data.key?('json') ? data['json'] : data
+        deployment = payload.kind_of?(Hash) ? payload['deployment'] : nil
+
+        unless deployment.kind_of?(Hash) && present?(deployment['id'])
+          raise "the response did not contain a deployment"
         end
 
-        return success_trigger["created_suite_id"] || success_trigger["duplicate_suite_id"]
+        return deployment
       end
 
-      def self.get_failed_trigger(results)
-        results.find { |result| result["failure_reason"].nil? == false }
+      # The error the API refused with, unwrapped from the `json` envelope when
+      # it has one. Nil for a body that carries no error, such as a proxy's.
+      def self.report_error(response)
+        body = JSON.parse(response.to_s)
+        error = body.kind_of?(Hash) ? body['error'] : nil
+        return nil unless error.kind_of?(Hash)
+
+        return error['json'].kind_of?(Hash) ? error['json'] : error
+      rescue StandardError
+        return nil
       end
 
-      def self.get_success_trigger(results)
-        results.find { |result| result["created_suite_id"].nil? == false || result["duplicate_suite_id"].nil? == false }
+      # A refusal from the API, as one sentence plus the event id to quote to
+      # QA Wolf support.
+      def self.report_error_message(response)
+        error = report_error(response)
+        return response.to_s if error.nil?
+
+        data = error['data']
+        event_id = data.kind_of?(Hash) ? data['eventId'] : nil
+        message = present?(error['message']) ? error['message'] : response.to_s
+
+        return present?(event_id) ? "#{message} (Event ID: #{event_id})" : message
       end
 
-      # Triggers QA Wolf deploy success webhook to start test runs.
+      # Reports a deployment status to QA Wolf, which evaluates the workspace's
+      # triggers and starts runs asynchronously.
       # Params :
       # +qawolf_api_key+:: QA Wolf API key
       # +qawolf_base_url+:: QA Wolf API base URL
       # +options+:: Options hash containing deployment details.
-      def self.notify_deploy(qawolf_api_key, qawolf_base_url, options)
+      def self.report_deployment(qawolf_api_key, qawolf_base_url, options)
         headers = {
           authorization: "Bearer #{qawolf_api_key}",
           user_agent: "qawolf_fastlane_plugin",
           content_type: "application/json"
         }
 
-        url = URI.join(qawolf_base_url || BASE_URL, WEBHOOK_DEPLOY_SUCCESS_ENDPOINT)
+        url = URI.join(qawolf_base_url || BASE_URL, REPORT_DEPLOYMENT_ENDPOINT)
 
-        response = RestClient.post(url.to_s, notify_deploy_body(options), headers)
+        response = RestClient.post(url.to_s, report_deployment_body(options), headers)
 
-        return process_notify_response(response)
+        return parse_report_response(response)
       rescue RestClient::ExceptionWithResponse => e
         begin
-          error_response = e.response.to_s
+          error_response = report_error_message(e.response)
         rescue StandardError
           error_response = "Internal server error"
         end
-        # Give error if request failed.
-        UI.user_error!("Failed to notify deploy!!! Request failed. Reason : #{error_response}")
+        UI.user_error!("🐺 QA Wolf refused the deployment report: #{error_response}")
       rescue StandardError => e
-        UI.user_error!("Failed to notify deploy!!! Something went wrong. Reason : #{e.message}")
+        UI.user_error!("🐺 Failed to report the deployment to QA Wolf: #{e.message}")
       end
     end
   end

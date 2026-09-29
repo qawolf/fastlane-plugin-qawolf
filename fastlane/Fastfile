@@ -4,7 +4,8 @@ lane :test do
     executable_file_basename: "fastlane_test"
   )
   notify_deploy_qawolf(
-    deployment_type: "android",
+    workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
+    environment: "Staging",
     sha: "random_sha",
     executable_environment_key: "ANDROID_APP",
     variables: {
