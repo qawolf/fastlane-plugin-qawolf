@@ -88,7 +88,7 @@ module Fastlane
       def self.workspace_id(params)
         workspace_id = presence(params[:workspace_id])
         if workspace_id.nil?
-          UI.user_error!("🐺 `workspace_id` is required. Call `whoami` in the QA Wolf API with your API key to find it, or ask your QA Wolf representative.")
+          UI.user_error!("🐺 `notify_deploy_qawolf` needs `workspace_id` (or `QAWOLF_WORKSPACE_ID`). Find it under Settings › API keys in QA Wolf, or call `whoami` in the QA Wolf API with your API key.")
         end
 
         return workspace_id
