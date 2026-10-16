@@ -1,6 +1,5 @@
 lane :test do
   upload_to_qawolf(
-    workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
     file_path: "./fastlane/fastlane-test-app-debug.apk",
     executable_file_basename: "fastlane_test"
   )

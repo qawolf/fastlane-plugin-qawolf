@@ -78,6 +78,23 @@ describe Fastlane::Actions::UploadToQawolfAction do
       end
     end
 
+    context "with the qawolf alias and QAWOLF_WORKSPACE_ID" do
+      let(:alias_config) do
+        FastlaneCore::Configuration.create(
+          Fastlane::Actions::QawolfAction.available_options,
+          { qawolf_api_key: "api_key", file_path: file_path, executable_file_basename: "my_app" }
+        )
+      end
+
+      before { ENV["QAWOLF_WORKSPACE_ID"] = "workspace_from_env" }
+      after { ENV.delete("QAWOLF_WORKSPACE_ID") }
+
+      it "requests the upload URL for that workspace" do
+        Fastlane::Actions::QawolfAction.run(alias_config)
+        expect(a_request(:get, /run-inputs-executables-signed-urls/).with(query: { "file" => "my_app.apk", "workspaceId" => "workspace_from_env" })).to have_been_made
+      end
+    end
+
     it "fails when file does not exist" do
       allow(File).to receive(:exist?).with(file_path).and_return(false)
       expect do

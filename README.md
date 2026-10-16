@@ -20,7 +20,9 @@ Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated test
 The plugin works with two kinds of QA Wolf API key:
 
 - **A team API key** (legacy) belongs to one workspace. `upload_to_qawolf` needs
-  no workspace with it; `notify_deploy_qawolf` still needs `workspace_id`.
+  no workspace with it and always uploads into the key's own workspace, even if
+  `workspace_id` names another one; `notify_deploy_qawolf` still needs
+  `workspace_id`, so make sure it is the key's workspace.
 - **An organization or user API key**, created under **Settings › API keys**,
   can reach every workspace in your organization. When the organization has
   more than one workspace, pass `workspace_id` to **both** `upload_to_qawolf`
@@ -75,7 +77,7 @@ lane :build do
         # Required with an organization or user API key when the organization
         # has more than one workspace. Also readable from QAWOLF_WORKSPACE_ID.
         # A team API key needs none.
-        workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
+        # workspace_id: "...",
 
         # Must be set to guarantee the uploaded file is replaced.
         # Typically, this should include a git branch name or a QA Wolf environment name.
