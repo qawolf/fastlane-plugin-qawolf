@@ -17,12 +17,13 @@ module Fastlane
         qawolf_base_url = params[:qawolf_base_url]
         file_path = params[:file_path] || default_file_path
         executable_file_basename = params[:executable_file_basename]
+        workspace_id = params[:workspace_id]
 
         validate_file_path(file_path)
 
         UI.message("🐺 Uploading to QA Wolf...")
 
-        uploaded_filename = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, executable_file_basename)
+        uploaded_filename = Helper::QawolfHelper.upload_file(qawolf_api_key, qawolf_base_url, file_path, executable_file_basename, workspace_id)
 
         ENV["QAWOLF_EXECUTABLE_FILENAME"] = uploaded_filename
 
@@ -93,6 +94,11 @@ module Fastlane
                                        description: "Your QA Wolf base URL",
                                        optional: true,
                                        type: String),
+          FastlaneCore::ConfigItem.new(key: :workspace_id,
+                                       env_name: "QAWOLF_WORKSPACE_ID",
+                                       description: "The QA Wolf workspace to upload into. Required with an organization or user API key when the organization has more than one workspace; a team API key needs none",
+                                       optional: true,
+                                       type: String),
           FastlaneCore::ConfigItem.new(key: :file_path,
                                        description: "Path to the built app file",
                                        optional: true,
@@ -122,6 +128,11 @@ module Fastlane
           'upload_to_qawolf(
             qawolf_api_key: ENV["QAWOLF_API_KEY"],
             file_path: "/path_to/app.apk",
+            executable_file_basename: "my_app"
+           )',
+          'upload_to_qawolf(
+            qawolf_api_key: ENV["QAWOLF_API_KEY"],
+            workspace_id: ENV["QAWOLF_WORKSPACE_ID"],
             executable_file_basename: "my_app"
            )'
         ]
