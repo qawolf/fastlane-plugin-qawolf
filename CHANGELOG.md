@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+### Added
+
+- `upload_to_qawolf` takes `workspace_id`, also read from
+  `QAWOLF_WORKSPACE_ID`. An organization or user API key needs it when the
+  organization has more than one workspace; without it the upload was refused
+  with "workspaceId is a required query parameter for organization and user
+  API keys". A team API key keeps working without one. Setting
+  `QAWOLF_WORKSPACE_ID` once now covers both `upload_to_qawolf` and
+  `notify_deploy_qawolf`.
+
 ## 1.0.0
 
 `notify_deploy_qawolf` now reports deployments through the public
