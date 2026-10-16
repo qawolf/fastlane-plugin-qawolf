@@ -1,4 +1,21 @@
 describe Fastlane::Helper::QawolfHelper do
+  describe "#signed_url_endpoint" do
+    it "names only the file when no workspace is given" do
+      url = described_class.signed_url_endpoint(nil, "my app.apk")
+      expect(url.to_s).to eq("https://app.qawolf.com/api/v0/run-inputs-executables-signed-urls?file=my+app.apk")
+    end
+
+    it "names the workspace when one is given" do
+      url = described_class.signed_url_endpoint(nil, "my_app.apk", "workspace&1")
+      expect(url.query).to eq("file=my_app.apk&workspaceId=workspace%261")
+    end
+
+    it "leaves out an empty workspace" do
+      url = described_class.signed_url_endpoint(nil, "my_app.apk", " ")
+      expect(url.query).to eq("file=my_app.apk")
+    end
+  end
+
   describe "#report_error_message" do
     it "reads the message and the event id" do
       body = { error: { json: { code: "BAD_REQUEST", message: "Number must be greater than 0", data: { eventId: "evt_1" } } } }.to_json

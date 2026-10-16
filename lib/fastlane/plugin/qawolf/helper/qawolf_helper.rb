@@ -38,14 +38,24 @@ module Fastlane
         { name: "Azure Pipelines", active: "TF_BUILD", variables: %w[BUILD_BUILDID SYSTEM_JOBID] }
       ]
 
-      def self.get_signed_url(qawolf_api_key, qawolf_base_url, filename)
+      # The upload URL for an executable. An organization or user API key
+      # reaches several workspaces, so it names one with `workspace_id`; a
+      # team API key implies its workspace and needs none.
+      def self.signed_url_endpoint(qawolf_base_url, filename, workspace_id = nil)
+        url = URI.join(qawolf_base_url || BASE_URL, SIGNED_URL_ENDPOINT)
+        query = { 'file' => filename }
+        query['workspaceId'] = workspace_id if present?(workspace_id)
+        url.query = URI.encode_www_form(query)
+        return url
+      end
+
+      def self.get_signed_url(qawolf_api_key, qawolf_base_url, filename, workspace_id = nil)
         headers = {
           user_agent: "qawolf_fastlane_plugin",
           authorization: "Bearer #{qawolf_api_key}"
         }
 
-        url = URI.join(qawolf_base_url || BASE_URL, SIGNED_URL_ENDPOINT)
-        url.query = URI.encode_www_form({ 'file' => filename })
+        url = signed_url_endpoint(qawolf_base_url, filename, workspace_id)
 
         response = RestClient.get(url.to_s, headers)
 
@@ -63,7 +73,8 @@ module Fastlane
       # +qawolf_base_url+:: QA Wolf API base URL
       # +file_path+:: Path to the file to be uploaded.
       # +executable_file_basename+:: Name to use for the uploaded file without extension
-      def self.upload_file(qawolf_api_key, qawolf_base_url, file_path, executable_file_basename)
+      # +workspace_id+:: QA Wolf workspace to upload into, for organization and user API keys
+      def self.upload_file(qawolf_api_key, qawolf_base_url, file_path, executable_file_basename, workspace_id = nil)
         unless executable_file_basename
           UI.user_error!("`executable_file_basename` is required")
         end
@@ -76,7 +87,7 @@ module Fastlane
           }
 
           uploaded_filename = "#{executable_file_basename}#{File.extname(file_path)}"
-          signed_url, run_input_path = get_signed_url(qawolf_api_key, qawolf_base_url, uploaded_filename)
+          signed_url, run_input_path = get_signed_url(qawolf_api_key, qawolf_base_url, uploaded_filename, workspace_id)
 
           RestClient.put(signed_url, file_content, headers)
         end

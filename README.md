@@ -6,7 +6,7 @@ This project is a [_fastlane_](https://github.com/fastlane/fastlane) plugin. To 
 
 ```
 # Add this to your Gemfile
-gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "1.0.0"
+gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "1.1.0"
 ```
 
 ## About qawolf
@@ -14,6 +14,26 @@ gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qa
 Fastlane plugin for QA Wolf integration.
 
 Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated testing, and reports the deployment to QA Wolf so your triggers start the matching runs.
+
+## API keys and workspaces
+
+The plugin works with two kinds of QA Wolf API key:
+
+- **A team API key** (legacy) belongs to one workspace. `upload_to_qawolf` needs
+  no workspace with it and always uploads into the key's own workspace, even if
+  `workspace_id` names another one; `notify_deploy_qawolf` still needs
+  `workspace_id`, so make sure it is the key's workspace.
+- **An organization or user API key**, created under **Settings › API keys**,
+  can reach every workspace in your organization. When the organization has
+  more than one workspace, pass `workspace_id` to **both** `upload_to_qawolf`
+  and `notify_deploy_qawolf`, or the upload is refused with "workspaceId is a
+  required query parameter for organization and user API keys".
+
+Setting the `QAWOLF_WORKSPACE_ID` environment variable once covers both
+actions. To find the workspace id, open **Settings › API keys** in your QA Wolf
+workspace (`https://app.qawolf.com/<workspace>/settings/api-keys`), or call
+`whoami` in the QA Wolf API with your API key: it lists the workspaces the key
+can reach, with their ids. Your QA Wolf representative can also tell you.
 
 ## Example
 
@@ -54,6 +74,11 @@ lane :build do
         # Must be set or available as env var QAWOLF_API_KEY
         qawolf_api_key: "qawolf_...",
 
+        # Required with an organization or user API key when the organization
+        # has more than one workspace. Also readable from QAWOLF_WORKSPACE_ID.
+        # A team API key needs none.
+        # workspace_id: "...",
+
         # Must be set to guarantee the uploaded file is replaced.
         # Typically, this should include a git branch name or a QA Wolf environment name.
         # Reach out to QA Wolf if you're unsure.
@@ -72,8 +97,8 @@ lane :build do
         qawolf_api_key: "qawolf_...",
 
         # Required. The workspace to report into, also readable from QAWOLF_WORKSPACE_ID.
-        # Call `whoami` in the QA Wolf API with your API key to find it, or ask
-        # your QA Wolf representative.
+        # Find it under Settings › API keys in QA Wolf, or call `whoami` in the
+        # QA Wolf API with your API key.
         workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
 
         # Required. The name or alias of an EXISTING QA Wolf environment.
@@ -127,12 +152,22 @@ The call returns the deployment id, and also sets it as `QAWOLF_DEPLOYMENT_ID`
 in `ENV` and in the lane context. Runs start asynchronously afterwards, so no
 run id comes back.
 
+## `upload_to_qawolf` options
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `qawolf_api_key` | yes | Your QA Wolf API key. Also read from `QAWOLF_API_KEY`. |
+| `executable_file_basename` | yes | The uploaded file's name, without extension. Uploading under the same name replaces the previous file. |
+| `workspace_id` | no | The workspace to upload into, shown under Settings › API keys in QA Wolf or returned by `whoami`. Also read from `QAWOLF_WORKSPACE_ID`. Required with an organization or user API key when the organization has more than one workspace. A team API key needs none. |
+| `file_path` | no | The built app. Defaults to the IPA, APK or AAB built earlier in the lane. |
+| `qawolf_base_url` | no | Override the QA Wolf base URL. Also read from `QAWOLF_BASE_URL`. |
+
 ## `notify_deploy_qawolf` options
 
 | Option | Required | Description |
 | --- | --- | --- |
 | `qawolf_api_key` | yes | Your QA Wolf API key. Also read from `QAWOLF_API_KEY`. |
-| `workspace_id` | yes | The workspace to report into, from `whoami` in the QA Wolf API. Also read from `QAWOLF_WORKSPACE_ID`. Required even with a team API key. |
+| `workspace_id` | yes | The workspace to report into, shown under Settings › API keys in QA Wolf or returned by `whoami`. Also read from `QAWOLF_WORKSPACE_ID`. Required even with a team API key. |
 | `environment` | yes | The name or alias of the QA Wolf environment. Also read from `QAWOLF_ENVIRONMENT`. **A value that matches no environment creates one.** |
 | `provider_deployment_id` | no | Your identifier for this deployment. Defaults to one derived from the CI system's variables, and to a generated one when no CI system is detected. |
 | `provider_deployment_discriminator` | no | Appended to the derived identifier to separate deployments one CI job makes at the same time, such as the legs of a build matrix. |
@@ -421,10 +456,11 @@ The instructions below are for maintainers of this plugin.
    end
    ```
 
-7. Grab a team API key from the team settings page. You can find it under “API Access”, mouseover the “Encrypted” text to copy the value. Set it as an environment variable, together with the workspace to report into.
+7. Create an API key under **Settings › API keys** in QA Wolf, and copy the workspace id shown on that page (also returned by `whoami` in the QA Wolf API; see [API keys and workspaces](#api-keys-and-workspaces)). Set both as environment variables.
 
    ```bash
-   # The API key and the workspace are required to be set
+   # The API key and the workspace are required to be set.
+   # The workspace id is used by both upload_to_qawolf and notify_deploy_qawolf.
    export QAWOLF_API_KEY="qawolf_..."
    export QAWOLF_WORKSPACE_ID="..."
    # the environment can be passed as an option instead
