@@ -13,3 +13,15 @@ lane :test do
     }
   )
 end
+
+lane :test_build do
+  upload_build_to_qawolf(
+    file_path: "./fastlane/fastlane-test-app-debug.apk",
+    environment: "Staging"
+  )
+  notify_deploy_qawolf(
+    workspace_id: ENV.fetch("QAWOLF_WORKSPACE_ID", nil),
+    environment: "Staging",
+    sha: "random_sha"
+  )
+end

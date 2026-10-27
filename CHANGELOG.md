@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- `upload_build_to_qawolf` uploads an `.apk`, `.aab` or `.ipa` (at most 500 MB)
+  as a QA Wolf build. QA Wolf reads the app ID, version and build number from
+  the file, and each run records which build it installed. With
+  `environment` (or `QAWOLF_ENVIRONMENT`) or `environment_id`, every later run
+  in that environment installs the build. `ephemeral_environment` and
+  `base_environment` create a pull request's preview environment on the first
+  upload. The action returns the build, sets `QAWOLF_BUILD_ID` in `ENV` and
+  the lane context, and collects every upload in the lane in
+  `QAWOLF_BUILD_IDS`. Builds must be turned on for the workspace.
+- `notify_deploy_qawolf` takes `builds`, which defaults to the builds uploaded
+  earlier in the lane. The runs the deployment starts install them.
+
+### Changed
+
+- `notify_deploy_qawolf` needs `executable_filename` only when the deployment
+  ships no builds. With builds alone, it sends no `RUN_INPUT_PATH`, so runs
+  install the builds. With both, it warns that the executable wins.
+- `upload_to_qawolf` is now legacy. It keeps working unchanged; see "Moving
+  from `upload_to_qawolf`" in the README.
+
 ## 1.1.0
 
 ### Added

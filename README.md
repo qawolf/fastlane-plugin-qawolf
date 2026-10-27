@@ -6,31 +6,31 @@ This project is a [_fastlane_](https://github.com/fastlane/fastlane) plugin. To 
 
 ```
 # Add this to your Gemfile
-gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "1.1.0"
+gem "fastlane-plugin-qawolf", git: "https://github.com/qawolf/fastlane-plugin-qawolf", tag: "1.2.0"
 ```
 
 ## About qawolf
 
 Fastlane plugin for QA Wolf integration.
 
-Uploads build artifacts (IPA, APK, or AAB) to QA Wolf storage for automated testing, and reports the deployment to QA Wolf so your triggers start the matching runs.
+Uploads app builds (IPA, APK, or AAB) to QA Wolf for automated testing, and reports the deployment to QA Wolf so your triggers start the matching runs. Each run records which build it installed.
 
 ## API keys and workspaces
 
 The plugin works with two kinds of QA Wolf API key:
 
-- **A team API key** (legacy) belongs to one workspace. `upload_to_qawolf` needs
-  no workspace with it and always uploads into the key's own workspace, even if
-  `workspace_id` names another one; `notify_deploy_qawolf` still needs
-  `workspace_id`, so make sure it is the key's workspace.
+- **A team API key** (legacy) belongs to one workspace. `upload_build_to_qawolf`
+  and `upload_to_qawolf` need no workspace with it and always upload into the
+  key's own workspace, even if `workspace_id` names another one;
+  `notify_deploy_qawolf` still needs `workspace_id`, so make sure it is the
+  key's workspace.
 - **An organization or user API key**, created under **Settings › API keys**,
   can reach every workspace in your organization. When the organization has
-  more than one workspace, pass `workspace_id` to **both** `upload_to_qawolf`
-  and `notify_deploy_qawolf`, or the upload is refused with "workspaceId is a
-  required query parameter for organization and user API keys".
+  more than one workspace, pass `workspace_id` to the upload action **and**
+  `notify_deploy_qawolf`, or the upload is refused.
 
-Setting the `QAWOLF_WORKSPACE_ID` environment variable once covers both
-actions. To find the workspace id, open **Settings › API keys** in your QA Wolf
+Setting the `QAWOLF_WORKSPACE_ID` environment variable once covers every
+action. To find the workspace id, open **Settings › API keys** in your QA Wolf
 workspace (`https://app.qawolf.com/<workspace>/settings/api-keys`), or call
 `whoami` in the QA Wolf API with your API key: it lists the workspaces the key
 can reach, with their ids. Your QA Wolf representative can also tell you.
@@ -69,8 +69,8 @@ lane :build do
         output: "./build/app_instrumented.ipa"
     )
 
-    # Upload the artifact to QA Wolf
-    upload_to_qawolf(
+    # Upload the app to QA Wolf as a build
+    upload_build_to_qawolf(
         # Must be set or available as env var QAWOLF_API_KEY
         qawolf_api_key: "qawolf_...",
 
@@ -79,15 +79,13 @@ lane :build do
         # A team API key needs none.
         # workspace_id: "...",
 
-        # Must be set to guarantee the uploaded file is replaced.
-        # Typically, this should include a git branch name or a QA Wolf environment name.
-        # Reach out to QA Wolf if you're unsure.
-        # Do NOT include a file extension, it'll be appended based on the build output file.
-        executable_file_basename: "calculator_app_staging",
+        # The environment whose runs install this build from now on, until a
+        # newer build of the same app arrives. Defaults to QAWOLF_ENVIRONMENT.
+        environment: "Staging",
 
-        # Only set this if you have not built the artifact in the same lane,
+        # Only set this if you have not built the app in the same lane,
         # e.g. via gradle or xcodebuild, check official Fastlane docs for details.
-        # file_path: "./build/app-bundle.apk",
+        # file_path: "./build/app-release.apk",
         # file_path: "./build/app.ipa",
     )
 
@@ -105,9 +103,9 @@ lane :build do
         # A value that matches no environment creates a new one, so check it first.
         environment: "Staging",
 
-        # Optional, but set if requested by the QA Wolf team.
-        # This is mostly to help distinguish between multiple apps within the same team/environment.
-        executable_environment_key: "RUN_INPUT_PATH",
+        # Optional, defaults to every build `upload_build_to_qawolf` uploaded
+        # earlier in the lane. The runs this deployment starts install them.
+        # builds: ["<BUILD_ID>"],
 
         # Optional, defaults to an id derived from your CI system's environment variables.
         # Set it to control which reports share a deployment.
@@ -141,9 +139,6 @@ lane :build do
           FOO: "bar"
         },
 
-        # Only set this if your lane does not include `upload_to_qawolf`
-        # executable_filename: "calculator_app_staging.apk",
-        # executable_filename: "calculator_app_staging.ipa",
     )
 end
 ```
@@ -152,7 +147,64 @@ The call returns the deployment id, and also sets it as `QAWOLF_DEPLOYMENT_ID`
 in `ENV` and in the lane context. Runs start asynchronously afterwards, so no
 run id comes back.
 
-## `upload_to_qawolf` options
+## Builds
+
+`upload_build_to_qawolf` uploads the app and creates a QA Wolf build from it. QA Wolf reads the app ID, version and build number from the file, and every run records which build it installed.
+
+A build reaches runs in two ways:
+
+- **Through its environment.** Every later run in the environment installs the build, until a newer build of the same app and platform arrives. This covers scheduled runs and runs started by hand. Without an environment, only the runs below install it.
+- **Through a deployment.** `notify_deploy_qawolf` reports the builds uploaded earlier in the lane, and the runs that deployment starts install them.
+
+The action returns the build, sets `QAWOLF_BUILD_ID` in `ENV` and in the lane context, and adds the ID to `QAWOLF_BUILD_IDS` in the lane context. A lane that uploads an Android and an iOS build reports both with one `notify_deploy_qawolf` call.
+
+### Pull request environments
+
+To test a pull request in its own preview environment, upload the build with `ephemeral_environment`. The environment is created on the first upload, as a copy of `base_environment`. Then report the deployment into the same environment name:
+
+```ruby
+upload_build_to_qawolf(
+    environment: "pr-#{ENV.fetch('PR_NUMBER')}",
+    ephemeral_environment: true,
+    base_environment: "Staging",
+)
+notify_deploy_qawolf(
+    environment: "pr-#{ENV.fetch('PR_NUMBER')}",
+    repository: "my-org/my-app",
+    pull_request_number: ENV.fetch("PR_NUMBER").to_i,
+)
+```
+
+Upload before you notify: `notify_deploy_qawolf` can't create a preview environment, so a report into a name that doesn't exist yet creates a regular one.
+
+### Moving from `upload_to_qawolf`
+
+`upload_to_qawolf` is the legacy upload. It keeps working, but its runs don't record which app they tested. Move in three steps. Any mix of done and not-done steps runs, but builds only take effect after step 3. Until then, `RUN_INPUT_PATH` wins, flows install the fixed file, and runs show `notTested`.
+
+1. **Fastfile:** replace `upload_to_qawolf` with `upload_build_to_qawolf`, and drop `executable_filename` and `executable_environment_key` from `notify_deploy_qawolf`. While a lane passes both builds and an executable, `notify_deploy_qawolf` warns that the executable wins.
+2. **Flows:** drop `path` and `env` from `launch()`. Use `launch()` or `launch({ app: { id } })`.
+3. **Variables:** remove `RUN_INPUT_PATH` and per-app variables from the environment in QA Wolf.
+
+Builds must be turned on for your workspace. Until they are, the upload fails with "Builds are not enabled for this workspace." Ask your QA Wolf representative.
+
+## `upload_build_to_qawolf` options
+
+| Option | Required | Description |
+| --- | --- | --- |
+| `qawolf_api_key` | yes | Your QA Wolf API key. Also read from `QAWOLF_API_KEY`. |
+| `workspace_id` | no | The workspace to upload into. Also read from `QAWOLF_WORKSPACE_ID`. Required with an organization or user API key. A team API key needs none. |
+| `file_path` | no | The `.apk`, `.aab` or `.ipa` file, at most 500 MB. Defaults to the file gym or gradle built earlier in the lane. Spaces in its name become dashes. |
+| `environment` | no | The name or alias of the environment whose runs install the build from now on. Defaults to `QAWOLF_ENVIRONMENT`. **A value that matches no environment creates one.** |
+| `environment_id` | no | The ID of an existing environment, instead of `environment`. |
+| `ephemeral_environment` | no | When `environment` names no environment yet, create it as a preview environment. |
+| `base_environment` | no | The environment a created preview environment copies. Requires `ephemeral_environment`. |
+| `branch` | no | Defaults to the current git branch. Shown with the build. `false` sends nothing. |
+| `sha` | no | Defaults to the current git commit hash. Shown with the build. `false` sends nothing. |
+| `qawolf_base_url` | no | Override the QA Wolf base URL. Also read from `QAWOLF_BASE_URL`. |
+
+## `upload_to_qawolf` options (legacy)
+
+Use `upload_build_to_qawolf` instead; see [Moving from `upload_to_qawolf`](#moving-from-upload_to_qawolf).
 
 | Option | Required | Description |
 | --- | --- | --- |
@@ -174,8 +226,9 @@ run id comes back.
 | `status` | no | `pending`, `success`, `failure` or `inactive`. Defaults to `success`, the only status that evaluates triggers. |
 | `deploy_target` | no | The http(s) URL the deployment serves. Required when `environment` names no existing environment. |
 | `service` | no | Which application was deployed, when several deploy into one environment. |
-| `executable_environment_key` | no | The env var the uploaded executable's path is exposed under. Defaults to `RUN_INPUT_PATH`. |
-| `executable_filename` | no | Set by `upload_to_qawolf`; set it yourself only when that action did not run in this lane. |
+| `builds` | no | IDs of the builds this deployment ships, at most 20. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane. |
+| `executable_environment_key` | no | Legacy. The env var the uploaded executable's path is exposed under. Defaults to `RUN_INPUT_PATH`. |
+| `executable_filename` | no | Legacy. Set by `upload_to_qawolf`; set it yourself only when that action did not run in this lane. Required when the deployment ships no builds. |
 | `branch` | no | Defaults to the current git branch. `false` sends nothing. |
 | `sha` | no | Defaults to the current git commit hash. `false` sends nothing. |
 | `commit_url` | no | An http(s) link to the deployed commit, for when QA Wolf cannot resolve the commit itself. |
@@ -450,7 +503,7 @@ The instructions below are for maintainers of this plugin.
        # relies on output of the gradle task and env vars QAWOLF_API_KEY,
        # QAWOLF_WORKSPACE_ID and QAWOLF_ENVIRONMENT
        # see example above for options
-       upload_to_qawolf
+       upload_build_to_qawolf
        notify_deploy_qawolf
      end
    end
@@ -460,7 +513,7 @@ The instructions below are for maintainers of this plugin.
 
    ```bash
    # The API key and the workspace are required to be set.
-   # The workspace id is used by both upload_to_qawolf and notify_deploy_qawolf.
+   # The workspace id is used by both upload_build_to_qawolf and notify_deploy_qawolf.
    export QAWOLF_API_KEY="qawolf_..."
    export QAWOLF_WORKSPACE_ID="..."
    # the environment can be passed as an option instead
