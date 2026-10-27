@@ -259,7 +259,8 @@ module Fastlane
           )
         end
       rescue RestClient::ExceptionWithResponse => e
-        UI.user_error!("🐺 Failed to upload the build file: storage refused it with HTTP status #{e.http_code}.")
+        reason = e.response.nil? ? e.message : "storage refused it with HTTP status #{e.http_code}."
+        UI.user_error!("🐺 Failed to upload the build file: #{reason}")
       rescue StandardError => e
         UI.user_error!("🐺 Failed to upload the build file: #{e.message}")
       end
@@ -288,6 +289,9 @@ module Fastlane
 
         return parse_result(response)
       rescue RestClient::ExceptionWithResponse => e
+        # Timeouts are ExceptionWithResponse too, but carry no response.
+        UI.user_error!("🐺 Failed to #{step}: #{e.message}") if e.response.nil?
+
         begin
           error_response = report_error_message(e.response)
         rescue StandardError

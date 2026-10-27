@@ -226,7 +226,7 @@ Use `upload_build_to_qawolf` instead; see [Moving from `upload_to_qawolf`](#movi
 | `status` | no | `pending`, `success`, `failure` or `inactive`. Defaults to `success`, the only status that evaluates triggers. |
 | `deploy_target` | no | The http(s) URL the deployment serves. Required when `environment` names no existing environment. |
 | `service` | no | Which application was deployed, when several deploy into one environment. |
-| `builds` | no | IDs of the builds this deployment ships, at most 20. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane. |
+| `builds` | no | IDs of the builds this deployment ships, at most 20. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane. Pass `[]` to ship none. |
 | `executable_environment_key` | no | Legacy. The env var the uploaded executable's path is exposed under. Defaults to `RUN_INPUT_PATH`. |
 | `executable_filename` | no | Legacy. Set by `upload_to_qawolf`; set it yourself only when that action did not run in this lane. Required when the deployment ships no builds. |
 | `branch` | no | Defaults to the current git branch. `false` sends nothing. |

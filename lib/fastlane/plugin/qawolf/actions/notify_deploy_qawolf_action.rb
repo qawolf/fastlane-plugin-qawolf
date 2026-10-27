@@ -166,7 +166,7 @@ module Fastlane
       end
 
       # The builds this deployment ships: `builds`, or else every build
-      # `upload_build_to_qawolf` uploaded earlier in the lane.
+      # `upload_build_to_qawolf` uploaded earlier in the lane. `[]` ships none.
       def self.builds(params)
         builds = params[:builds] || Actions.lane_context[SharedValues::QAWOLF_BUILD_IDS] || []
         return nil if builds.empty?
@@ -327,7 +327,7 @@ module Fastlane
                                        optional: true,
                                        type: Integer),
           FastlaneCore::ConfigItem.new(key: :builds,
-                                       description: "IDs of the builds this deployment ships, at most 20. Runs it starts install them. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane",
+                                       description: "IDs of the builds this deployment ships, at most 20. Runs it starts install them. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane. Pass [] to ship none",
                                        optional: true,
                                        type: Array),
           FastlaneCore::ConfigItem.new(key: :executable_filename,
