@@ -10,6 +10,11 @@ module Fastlane
       BASE_URL = "https://app.qawolf.com"
       SIGNED_URL_ENDPOINT = "/api/v0/run-inputs-executables-signed-urls"
       REPORT_DEPLOYMENT_ENDPOINT = "/api/trpc/public.deployment.reportStatus"
+      REQUEST_BUILD_UPLOAD_ENDPOINT = "/api/trpc/public.build.requestUpload"
+      CREATE_BUILD_ENDPOINT = "/api/trpc/public.build.create"
+      # Matches the QA Wolf CI SDK: a 500 MB build on a slow connection outlasts
+      # RestClient's default timeout.
+      BUILD_UPLOAD_TIMEOUT_SECONDS = 30 * 60
 
       # Mirrors the QA Wolf CI SDK, so a fastlane build and an SDK call in the
       # same job agree on the deployment. Bitrise and Azure Pipelines are
@@ -140,6 +145,7 @@ module Fastlane
         }.compact
 
         input = {
+          'builds' => options[:builds],
           'deployTarget' => options[:deploy_target],
           'environment' => options[:environment] ? { 'name' => options[:environment] } : nil,
           'environmentVariables' => options[:environment_variables],
@@ -153,12 +159,17 @@ module Fastlane
         { 'json' => input }.to_json
       end
 
-      # The reported deployment, as `{ "id", "status", "url" }`.
-      def self.parse_report_response(response)
+      # The payload of a successful public API call, unwrapped from its envelope.
+      def self.parse_result(response)
         body = JSON.parse(response.to_s)
         data = body.kind_of?(Hash) ? body.dig('result', 'data') : nil
         # The API wraps a payload that needs it in a `json` envelope.
-        payload = data.kind_of?(Hash) && data.key?('json') ? data['json'] : data
+        return data.kind_of?(Hash) && data.key?('json') ? data['json'] : data
+      end
+
+      # The reported deployment, as `{ "id", "status", "url" }`.
+      def self.parse_report_response(response)
+        payload = parse_result(response)
         deployment = payload.kind_of?(Hash) ? payload['deployment'] : nil
 
         unless deployment.kind_of?(Hash) && present?(deployment['id'])
@@ -220,6 +231,71 @@ module Fastlane
         UI.user_error!("🐺 QA Wolf refused the deployment report: #{error_response}")
       rescue StandardError => e
         UI.user_error!("🐺 Failed to report the deployment to QA Wolf: #{e.message}")
+      end
+
+      # Asks QA Wolf for a URL to upload a build file to, as
+      # `{ "buildId", "expiresAt", "uploadHeaders", "uploadUrl" }`.
+      def self.request_build_upload(qawolf_api_key, qawolf_base_url, file_name:, file_size_bytes:, workspace_id:)
+        input = { 'fileName' => file_name, 'fileSizeBytes' => file_size_bytes, 'workspaceId' => workspace_id }.compact
+        upload = call_public_api(qawolf_api_key, qawolf_base_url, REQUEST_BUILD_UPLOAD_ENDPOINT, input, "get an upload URL")
+
+        unless upload.kind_of?(Hash) && present?(upload['buildId']) && present?(upload['uploadUrl'])
+          UI.user_error!("🐺 QA Wolf answered without an upload URL.")
+        end
+
+        return upload
+      end
+
+      # Streams the build file to the upload URL. The URL is signed for
+      # `upload_headers`, so they are sent exactly as given.
+      def self.put_build_file(upload_url, upload_headers, file_path)
+        File.open(file_path, "rb") do |file|
+          RestClient::Request.execute(
+            method: :put,
+            url: upload_url,
+            payload: file,
+            headers: upload_headers || {},
+            timeout: BUILD_UPLOAD_TIMEOUT_SECONDS
+          )
+        end
+      rescue RestClient::ExceptionWithResponse => e
+        UI.user_error!("🐺 Failed to upload the build file: storage refused it with HTTP status #{e.http_code}.")
+      rescue StandardError => e
+        UI.user_error!("🐺 Failed to upload the build file: #{e.message}")
+      end
+
+      # Creates a build from an uploaded file, and answers the build.
+      def self.create_build(qawolf_api_key, qawolf_base_url, input)
+        payload = call_public_api(qawolf_api_key, qawolf_base_url, CREATE_BUILD_ENDPOINT, input, "create the build")
+        build = payload.kind_of?(Hash) ? payload['build'] : nil
+
+        UI.user_error!("🐺 QA Wolf answered without a build.") unless build.kind_of?(Hash) && present?(build['id'])
+
+        return build
+      end
+
+      # Posts `input` to a public API procedure and answers its payload.
+      # `step` names what the call does, for the error a refusal fails with.
+      def self.call_public_api(qawolf_api_key, qawolf_base_url, endpoint, input, step)
+        headers = {
+          authorization: "Bearer #{qawolf_api_key}",
+          user_agent: "qawolf_fastlane_plugin",
+          content_type: "application/json"
+        }
+        url = URI.join(qawolf_base_url || BASE_URL, endpoint)
+
+        response = RestClient.post(url.to_s, { 'json' => input }.to_json, headers)
+
+        return parse_result(response)
+      rescue RestClient::ExceptionWithResponse => e
+        begin
+          error_response = report_error_message(e.response)
+        rescue StandardError
+          error_response = "Internal server error"
+        end
+        UI.user_error!("🐺 QA Wolf refused to #{step}: #{error_response}")
+      rescue StandardError => e
+        UI.user_error!("🐺 Failed to #{step}: #{e.message}")
       end
     end
   end

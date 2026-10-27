@@ -247,6 +247,63 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
     end
 
+    context "with builds and no executable" do
+      let(:params) { super().merge(builds: ["abcdefghijklmnopqrstuvwxobld"], executable_filename: nil) }
+
+      it "reports the builds" do
+        described_class.run(params)
+        expect(reported_input["builds"]).to eq(["abcdefghijklmnopqrstuvwxobld"])
+      end
+
+      it "sends no RUN_INPUT_PATH, so runs install the builds" do
+        described_class.run(params)
+        expect(reported_input).not_to have_key("environmentVariables")
+      end
+
+      it "still sends the lane's own variables" do
+        described_class.run(params.merge(variables: { FOO: "bar" }))
+        expect(reported_input["environmentVariables"]).to eq("FOO" => "bar")
+      end
+    end
+
+    context "with builds and an executable" do
+      let(:params) { super().merge(builds: ["abcdefghijklmnopqrstuvwxobld"]) }
+
+      it "reports both" do
+        described_class.run(params)
+        expect(reported_input).to include(
+          "builds" => ["abcdefghijklmnopqrstuvwxobld"],
+          "environmentVariables" => { "RUN_INPUT_PATH" => "/home/wolf/run-inputs-executables/file.apk" }
+        )
+      end
+
+      it "warns that RUN_INPUT_PATH wins over the builds" do
+        allow(Fastlane::UI).to receive(:important)
+        described_class.run(params)
+        expect(Fastlane::UI).to have_received(:important).with(/RUN_INPUT_PATH wins/)
+      end
+    end
+
+    context "when upload_build_to_qawolf ran earlier in the lane" do
+      let(:params) { super().merge(executable_filename: nil) }
+
+      after { Fastlane::Actions.lane_context.clear }
+
+      it "reports every build the lane uploaded" do
+        Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::QAWOLF_BUILD_IDS] = ["abcdefghijklmnopqrstuvwxobld", "zyxwvutsrqponmlkjihgfedcobld"]
+        described_class.run(params)
+        expect(reported_input["builds"]).to eq(["abcdefghijklmnopqrstuvwxobld", "zyxwvutsrqponmlkjihgfedcobld"])
+      end
+    end
+
+    context "with more than 20 builds" do
+      let(:params) { super().merge(builds: Array.new(21) { |index| format("%024dobld", index) }) }
+
+      it "fails" do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /20 builds/)
+      end
+    end
+
     context "with no workspace id" do
       let(:params) { super().merge(workspace_id: nil) }
 

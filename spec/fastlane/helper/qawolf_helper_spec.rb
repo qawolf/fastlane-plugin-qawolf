@@ -32,6 +32,94 @@ describe Fastlane::Helper::QawolfHelper do
     end
   end
 
+  describe "#request_build_upload" do
+    let(:url) { "https://app.qawolf.com/api/trpc/public.build.requestUpload" }
+    let(:upload) do
+      {
+        "buildId" => "abcdefghijklmnopqrstuvwxobld",
+        "expiresAt" => "2026-10-26T20:00:00.000Z",
+        "uploadHeaders" => { "Content-Type" => "application/octet-stream" },
+        "uploadUrl" => "https://storage.example.com/upload"
+      }
+    end
+
+    it "asks for an upload URL and answers the API's payload" do
+      stub_request(:post, url)
+        .with(body: { json: { fileName: "app.apk", fileSizeBytes: 42, workspaceId: "workspace_1" } }.to_json, headers: { "Authorization" => "Bearer api_key" })
+        .to_return(status: 200, body: { result: { data: { json: upload } } }.to_json)
+
+      expect(described_class.request_build_upload("api_key", nil, file_name: "app.apk", file_size_bytes: 42, workspace_id: "workspace_1")).to eq(upload)
+    end
+
+    it "leaves out a missing workspace" do
+      stub = stub_request(:post, url)
+             .with(body: { json: { fileName: "app.apk", fileSizeBytes: 42 } }.to_json)
+             .to_return(status: 200, body: { result: { data: { json: upload } } }.to_json)
+
+      described_class.request_build_upload("api_key", nil, file_name: "app.apk", file_size_bytes: 42, workspace_id: nil)
+      expect(stub).to have_been_requested
+    end
+
+    it "fails with the refusal and its event id" do
+      refusal = { error: { json: { message: "Builds are not enabled for this workspace.", data: { eventId: "evt_1" } } } }
+      stub_request(:post, url).to_return(status: 403, body: refusal.to_json)
+
+      expect do
+        described_class.request_build_upload("api_key", nil, file_name: "app.apk", file_size_bytes: 42, workspace_id: nil)
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /upload URL.*Builds are not enabled for this workspace\. \(Event ID: evt_1\)/)
+    end
+  end
+
+  describe "#put_build_file" do
+    let(:upload_url) { "https://storage.example.com/upload" }
+    let(:upload_headers) { { "Content-Type" => "application/octet-stream", "x-goog-if-generation-match" => "0" } }
+
+    def with_build_file
+      Dir.mktmpdir do |directory|
+        file_path = File.join(directory, "app.apk")
+        File.write(file_path, "apk bytes")
+        yield(file_path)
+      end
+    end
+
+    it "sends the file's bytes with the upload headers" do
+      stub = stub_request(:put, upload_url).with(body: "apk bytes", headers: upload_headers).to_return(status: 200)
+
+      with_build_file { |file_path| described_class.put_build_file(upload_url, upload_headers, file_path) }
+      expect(stub).to have_been_requested
+    end
+
+    it "fails with the status storage refused with" do
+      stub_request(:put, upload_url).to_return(status: 412, body: "<Error>Precondition failed</Error>")
+
+      expect do
+        with_build_file { |file_path| described_class.put_build_file(upload_url, upload_headers, file_path) }
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /upload the build file.*412/)
+    end
+  end
+
+  describe "#create_build" do
+    let(:url) { "https://app.qawolf.com/api/trpc/public.build.create" }
+    let(:build) { { "id" => "abcdefghijklmnopqrstuvwxobld", "appId" => "com.example.app", "platform" => "android" } }
+    let(:input) { { "buildId" => "abcdefghijklmnopqrstuvwxobld", "environment" => { "name" => "Staging" } } }
+
+    it "creates the build and answers it" do
+      stub_request(:post, url)
+        .with(body: { json: input }.to_json)
+        .to_return(status: 200, body: { result: { data: { json: { build: build } } } }.to_json)
+
+      expect(described_class.create_build("api_key", nil, input)).to eq(build)
+    end
+
+    it "fails with the refusal" do
+      stub_request(:post, url).to_return(status: 400, body: { error: { json: { message: "The file isn't an app." } } }.to_json)
+
+      expect do
+        described_class.create_build("api_key", nil, input)
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /create the build.*The file isn't an app\./)
+    end
+  end
+
   describe "#detect_provider_deployment_id" do
     let(:github_env) do
       {

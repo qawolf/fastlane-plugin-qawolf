@@ -14,6 +14,7 @@ module Fastlane
     class NotifyDeployQawolfAction < Action
       BASE_PATH = "/home/wolf/run-inputs-executables/"
       STATUSES = %w[pending success failure inactive]
+      MAX_BUILDS = 20
 
       REMOVED_OPTIONS = {
         deployment_type: "`deployment_type` was removed in 1.0.0. Use `environment`, naming an existing QA Wolf environment — an unmatched name creates a new one.",
@@ -33,14 +34,16 @@ module Fastlane
 
         UI.message("🐺 Reporting the deployment to QA Wolf...")
 
+        builds = builds(params)
         options = {
           branch: presence(params[:branch]),
+          builds: builds,
           commit_author_name: presence(params[:commit_author_name]),
           commit_message: presence(params[:commit_message]),
           commit_url: commit_url(params),
           deploy_target: deploy_target(params),
           environment: environment(params),
-          environment_variables: environment_variables(params),
+          environment_variables: environment_variables(params, builds),
           provider_deployment_id: provider_deployment_id(params),
           pull_request_number: pull_request_number(params),
           repository: repository(params),
@@ -162,13 +165,32 @@ module Fastlane
         return number.to_i
       end
 
-      def self.environment_variables(params)
-        variables = params[:variables] || {}
-        executable_environment_key = params[:executable_environment_key]
+      # The builds this deployment ships: `builds`, or else every build
+      # `upload_build_to_qawolf` uploaded earlier in the lane.
+      def self.builds(params)
+        builds = params[:builds] || Actions.lane_context[SharedValues::QAWOLF_BUILD_IDS] || []
+        return nil if builds.empty?
 
-        variables
-          .merge({ executable_environment_key => run_input_path(params) })
-          .each_with_object({}) { |(key, value), result| result[key.to_s] = value.to_s }
+        UI.user_error!("🐺 A deployment ships at most #{MAX_BUILDS} builds.") if builds.length > MAX_BUILDS
+
+        return builds
+      end
+
+      # With builds, the executable is optional: a lane that uploads builds
+      # alone sends no RUN_INPUT_PATH, so runs install the builds.
+      def self.environment_variables(params, builds)
+        variables = (params[:variables] || {}).each_with_object({}) { |(key, value), result| result[key.to_s] = value.to_s }
+        if builds && params[:executable_filename].nil?
+          # An empty hash would replace the variables an earlier report stored.
+          return variables.empty? ? nil : variables
+        end
+
+        executable_environment_key = params[:executable_environment_key]
+        if builds
+          UI.important("🐺 Both builds and an executable were given. In a flow, #{executable_environment_key} wins over the build for its platform, so runs install the executable. Drop `executable_filename` once flows launch the build.")
+        end
+
+        return variables.merge(executable_environment_key.to_s => run_input_path(params))
       end
 
       # A deployment's identity: reports sharing one update a single deployment.
@@ -192,7 +214,7 @@ module Fastlane
 
       def self.run_input_path(params)
         if params[:executable_filename].nil?
-          UI.user_error!("🐺 No executable filename found. Please run the `upload_to_qawolf` action first or set the `executable_filename` option.")
+          UI.user_error!("🐺 Nothing to deploy. Run `upload_build_to_qawolf` first or pass `builds`, or for the legacy upload run `upload_to_qawolf` first or set `executable_filename`.")
         end
 
         return "#{BASE_PATH}#{params[:executable_filename]}"
@@ -207,7 +229,7 @@ module Fastlane
       end
 
       def self.details
-        "Reports a deployment to QA Wolf through the public `deployment.reportStatus` API, which evaluates your triggers and starts the matching runs asynchronously. Requires the `upload_to_qawolf` action to be run first."
+        "Reports a deployment to QA Wolf through the public `deployment.reportStatus` API, which evaluates your triggers and starts the matching runs asynchronously. Runs it starts install the builds `upload_build_to_qawolf` uploaded earlier in the lane, or the executable the legacy `upload_to_qawolf` uploaded."
       end
 
       def self.output
@@ -304,9 +326,13 @@ module Fastlane
                                        description: "The GitLab merge request number associated with this deployment. Requires `repository`",
                                        optional: true,
                                        type: Integer),
+          FastlaneCore::ConfigItem.new(key: :builds,
+                                       description: "IDs of the builds this deployment ships, at most 20. Runs it starts install them. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane",
+                                       optional: true,
+                                       type: Array),
           FastlaneCore::ConfigItem.new(key: :executable_filename,
                                        env_name: "QAWOLF_EXECUTABLE_FILENAME",
-                                       description: "The filename of the executable to use in QA Wolf. Set by the `upload_to_qawolf` action",
+                                       description: "The filename of the executable to use in QA Wolf. Set by the legacy `upload_to_qawolf` action. Required unless the deployment ships builds",
                                        optional: true,
                                        type: String),
           # Declared so an unchanged 0.x lane fails with an explanation.
