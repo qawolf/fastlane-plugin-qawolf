@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+### Added
+
+- `upload_build_to_qawolf` uploads Linux Electron builds, `.deb` and `.rpm`
+  files. Desktop builds must be turned on for the workspace.
+
 ## 1.2.0
 
 ### Added
