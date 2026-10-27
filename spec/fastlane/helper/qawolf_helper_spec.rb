@@ -68,6 +68,14 @@ describe Fastlane::Helper::QawolfHelper do
         described_class.request_build_upload("api_key", nil, file_name: "app.apk", file_size_bytes: 42, workspace_id: nil)
       end.to raise_error(FastlaneCore::Interface::FastlaneError, /upload URL.*Builds are not enabled for this workspace\. \(Event ID: evt_1\)/)
     end
+
+    it "fails with the timeout when QA Wolf does not answer in time" do
+      stub_request(:post, url).to_timeout
+
+      expect do
+        described_class.request_build_upload("api_key", nil, file_name: "app.apk", file_size_bytes: 42, workspace_id: nil)
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /Failed to get an upload URL: .*[Tt]imed out/)
+    end
   end
 
   describe "#put_build_file" do
@@ -95,6 +103,14 @@ describe Fastlane::Helper::QawolfHelper do
       expect do
         with_build_file { |file_path| described_class.put_build_file(upload_url, upload_headers, file_path) }
       end.to raise_error(FastlaneCore::Interface::FastlaneError, /upload the build file.*412/)
+    end
+
+    it "fails with the timeout when storage does not answer in time" do
+      stub_request(:put, upload_url).to_timeout
+
+      expect do
+        with_build_file { |file_path| described_class.put_build_file(upload_url, upload_headers, file_path) }
+      end.to raise_error(FastlaneCore::Interface::FastlaneError, /Failed to upload the build file: .*[Tt]imed out/)
     end
   end
 

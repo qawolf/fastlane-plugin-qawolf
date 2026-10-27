@@ -296,6 +296,23 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
     end
 
+    context "with an empty `builds` after upload_build_to_qawolf ran" do
+      let(:params) { super().merge(builds: []) }
+
+      before { Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::QAWOLF_BUILD_IDS] = ["abcdefghijklmnopqrstuvwxobld"] }
+      after { Fastlane::Actions.lane_context.clear }
+
+      it "ships no builds" do
+        described_class.run(params)
+        expect(reported_input).not_to have_key("builds")
+      end
+
+      it "keeps the executable" do
+        described_class.run(params)
+        expect(reported_input["environmentVariables"]).to have_key("RUN_INPUT_PATH")
+      end
+    end
+
     context "with more than 20 builds" do
       let(:params) { super().merge(builds: Array.new(21) { |index| format("%024dobld", index) }) }
 
