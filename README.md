@@ -182,7 +182,7 @@ Upload before you notify: `notify_deploy_qawolf` can't create a preview environm
 `upload_to_qawolf` is the legacy upload. It keeps working, but its runs don't record which app they tested. Move in three steps. Any mix of done and not-done steps runs, but builds only take effect after step 3. Until then, `RUN_INPUT_PATH` wins, flows install the fixed file, and runs show `notTested`.
 
 1. **Fastfile:** replace `upload_to_qawolf` with `upload_build_to_qawolf`, and drop `executable_filename` and `executable_environment_key` from `notify_deploy_qawolf`. While a lane passes both builds and an executable, `notify_deploy_qawolf` warns that the executable wins.
-2. **Flows:** drop `path` and `env` from `launch()`. Use `launch()` or `launch({ app: { id } })`.
+2. **Flows:** launch with `launch({ app: { id } })`, where `id` is the Android package name or the iOS bundle id. Drop `path` and `env`. A bare `launch()` ignores builds: it reads `RUN_INPUT_PATH`, then opens the app already on the device.
 3. **Variables:** remove `RUN_INPUT_PATH` and per-app variables from the environment in QA Wolf.
 
 Builds must be turned on for your workspace. Until they are, the upload fails with "Builds are not enabled for this workspace." Ask your QA Wolf representative.
