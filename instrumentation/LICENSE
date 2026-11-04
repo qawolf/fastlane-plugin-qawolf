@@ -1,0 +1,18 @@
+Copyright (c) 2026 QA Wolf Inc. All rights reserved.
+
+The MIT License at the root of this repository does not apply to the files in
+this folder.
+
+QA Wolf Inc. makes this source code available so that QA Wolf customers can
+review it and build it into the apps that they test with QA Wolf. For that
+purpose only, you may read, modify and build this source code, and you may
+install builds of your apps that contain it on devices that run your QA Wolf
+tests. Any other use, copy or distribution needs prior written permission from
+QA Wolf Inc.
+
+Files that carry their own license header (for example fishhook.c and
+fishhook.h) stay under that license.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL QA WOLF INC. BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY ARISING FROM THIS SOFTWARE OR ITS USE.
