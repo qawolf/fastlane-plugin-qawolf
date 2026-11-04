@@ -372,6 +372,8 @@ inject_qawolf_instrumentation(
 
 The output IPA doesn't have a valid signature so sign it again before uploading. Check https://docs.fastlane.tools/actions/resign/
 
+The source code of the instrumentation library is in [`instrumentation/`](instrumentation). CI copies it from the QA Wolf main repository together with each new `instrumentation.dylib`. The MIT License of this repository does not apply to that folder: see [`instrumentation/LICENSE`](instrumentation/LICENSE).
+
 ## Run tests for this plugin
 
 To run both the tests, and code style validation, run

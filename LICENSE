@@ -1,3 +1,6 @@
+This MIT License covers every file in this repository except the files in the
+instrumentation/ folder. instrumentation/LICENSE sets the terms for that folder.
+
 The MIT License (MIT)
 
 Copyright (c) 2024 Simon Ingeson <simon@qawolf.com>
