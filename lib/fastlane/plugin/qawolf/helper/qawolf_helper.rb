@@ -146,6 +146,7 @@ module Fastlane
 
         input = {
           'builds' => options[:builds],
+          'changes' => options[:changes],
           'deployTarget' => options[:deploy_target],
           'environment' => options[:environment] ? { 'name' => options[:environment] } : nil,
           'environmentVariables' => options[:environment_variables],

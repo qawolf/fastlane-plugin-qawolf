@@ -2,6 +2,7 @@ require 'fastlane/action'
 require 'fastlane_core'
 require 'securerandom'
 require_relative '../helper/qawolf_helper'
+require_relative '../helper/deployment_changes'
 
 module Fastlane
   module Actions
@@ -38,6 +39,7 @@ module Fastlane
         options = {
           branch: presence(params[:branch]),
           builds: builds,
+          changes: Helper::DeploymentChanges.from_options(params, cwd: Dir.pwd),
           commit_author_name: presence(params[:commit_author_name]),
           commit_message: presence(params[:commit_message]),
           commit_url: commit_url(params),
@@ -326,6 +328,7 @@ module Fastlane
                                        description: "The GitLab merge request number associated with this deployment. Requires `repository`",
                                        optional: true,
                                        type: Integer),
+          *Helper::DeploymentChanges.config_items,
           FastlaneCore::ConfigItem.new(key: :builds,
                                        description: "IDs of the builds this deployment ships, at most 20. Runs it starts install them. Defaults to every build `upload_build_to_qawolf` uploaded earlier in the lane. Pass [] to ship none",
                                        optional: true,

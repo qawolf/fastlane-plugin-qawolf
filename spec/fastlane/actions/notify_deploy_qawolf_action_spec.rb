@@ -1,4 +1,5 @@
 require 'webmock/rspec'
+require_relative '../../support/git_repository'
 
 describe Fastlane::Actions::NotifyDeployQawolfAction do
   let(:runs_url) { "https://app.qawolf.com/environments/env_id/runs" }
@@ -366,6 +367,101 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
 
       it "fails" do
         expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError)
+      end
+    end
+
+    describe "changes" do
+      let(:collected_changes) do
+        {
+          "items" => [
+            { "kind" => "pull-request", "title" => "Add the cart" },
+            { "changedPaths" => ["app/CartView.swift"], "kind" => "commit", "title" => "Show the cart" },
+            { "changedPaths" => ["app/Cart.swift"], "kind" => "commit", "title" => "Add the cart model" }
+          ]
+        }
+      end
+
+      def refusal_of(extra_params)
+        described_class.run(params.merge(extra_params))
+      rescue FastlaneCore::Interface::FastlaneError => e
+        e.message
+      end
+
+      # Runs the action inside a repository holding a pull request's commits
+      # on top of `main`, or inside a shallow clone of it.
+      def run_in_repository(extra_params, clone = :full)
+        GitRepository.create do |repository, dir|
+          repository.commit("Initial commit", "README.md" => "hello")
+          repository.git("checkout", "--quiet", "-b", "feature/cart", cwd: repository.path)
+          repository.commit("Add the cart model", "app/Cart.swift" => "let secret = \"do-not-send\"")
+          repository.commit("Show the cart", "app/CartView.swift" => "struct CartView {}")
+          repository.git("clone", "--quiet", "--depth", "1", "file://#{repository.path}", File.join(dir, "shallow")) if clone == :shallow
+          return Dir.chdir(clone == :shallow ? File.join(dir, "shallow") : repository.path) { described_class.run(params.merge(extra_params)) }
+        end
+      end
+
+      it "sends no changes when none of the changes options is set" do
+        described_class.run(params.merge(branch: "my-branch", sha: "abc123", repository: "my-org/my-app", pull_request_number: 42))
+        expect(reported_input).not_to have_key("changes")
+      end
+
+      it "sends changes given by hand" do
+        described_class.run(params.merge(changes: { items: [{ kind: "commit", title: "Add the cart", changedPaths: ["app/Cart.swift"] }] }))
+        expect(reported_input["changes"]).to eq("items" => [{ "changedPaths" => ["app/Cart.swift"], "kind" => "commit", "title" => "Add the cart" }])
+      end
+
+      it "refuses changes that carry a diff" do
+        expect(refusal_of(changes: { items: [{ kind: "commit", title: "Add the cart", diff: "+ struct Cart {}" }] })).to match(/no field for code, diffs or file contents/)
+      end
+
+      it "sends the pull request's title and description" do
+        described_class.run(params.merge(pull_request_title: "Add the cart", pull_request_description: "Lets shoppers review their cart."))
+        expect(reported_input["changes"]).to eq("items" => [{ "description" => "Lets shoppers review their cart.", "kind" => "pull-request", "title" => "Add the cart" }])
+      end
+
+      it "refuses a pull request description without a title" do
+        expect(refusal_of(pull_request_description: "Details")).to match(/needs `pull_request_title`/)
+      end
+
+      it "refuses changes given by hand alongside collect_changes" do
+        expect(refusal_of(changes: { items: [{ kind: "commit", title: "Add the cart" }] }, collect_changes: true)).to match(/either `changes`/)
+      end
+
+      it "refuses collect_changes without changes_since" do
+        expect(refusal_of(collect_changes: true)).to match(/needs `changes_since`/)
+      end
+
+      it "collects the pull request's commits from git after its title" do
+        run_in_repository(collect_changes: true, changes_since: "main", pull_request_title: "Add the cart")
+        expect(reported_input["changes"]).to eq(collected_changes)
+      end
+
+      it "sends no file contents" do
+        run_in_repository(collect_changes: true, changes_since: "main")
+        expect(reported_input.to_json).not_to include("do-not-send")
+      end
+
+      it "still reports the deployment when the clone is shallow" do
+        allow(Fastlane::UI).to receive(:important)
+        expect(run_in_repository({ collect_changes: true, changes_since: "HEAD~1" }, :shallow)).to eq("deployment_id")
+      end
+
+      it "sends no changes when the clone is shallow" do
+        allow(Fastlane::UI).to receive(:important)
+        run_in_repository({ collect_changes: true, changes_since: "HEAD~1" }, :shallow)
+        expect(reported_input).not_to have_key("changes")
+      end
+
+      it "warns when the clone is shallow" do
+        allow(Fastlane::UI).to receive(:important)
+        run_in_repository({ collect_changes: true, changes_since: "HEAD~1" }, :shallow)
+        expect(Fastlane::UI).to have_received(:important).with(/shallow/)
+      end
+
+      it "still sends the pull request's title when no commits can be collected" do
+        allow(Fastlane::UI).to receive(:important)
+        run_in_repository(collect_changes: true, changes_since: "v9.9.9", pull_request_title: "Add the cart")
+        expect(reported_input["changes"]).to eq("items" => [{ "kind" => "pull-request", "title" => "Add the cart" }])
       end
     end
 
