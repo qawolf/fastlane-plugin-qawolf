@@ -306,11 +306,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     id<AVCaptureVideoDataOutputSampleBufferDelegate> captureDelegate = self.captureDelegate;
     if (!captureDelegate) return;
 
-    // Forward to AVCapture delegate in protocol format
-    AVCaptureConnection *connection = [self connectionWithMediaType:AVMediaTypeVideo];
-    [captureDelegate captureOutput:self
-              didOutputSampleBuffer:sampleBuffer
-                     fromConnection:connection];
+    QAWDeliverVideoSampleBuffer(self, captureDelegate, self.delegateQueue, sampleBuffer);
 }
 
 - (void)mockMediaSource:(id)source didChangeInjectionState:(BOOL)isEnabled {
