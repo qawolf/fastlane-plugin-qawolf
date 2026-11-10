@@ -4,21 +4,20 @@
 
 ### Added
 
-- `notify_deploy_qawolf` can tell QA Wolf what a deployment changed, so QA
-  Wolf can choose which flows to run without access to your repository. It
-  sends each pull request or commit with its title, and optionally its
-  description and changed file paths. No code is ever sent: there is no place
-  for diffs or file contents, and the plugin never reads them.
-  - `pull_request_title` and `pull_request_description` send the pull
-    request the build was made from.
-  - `collect_changes` and `changes_since` collect the commits after
-    `changes_since` from git, with their messages and changed file paths.
-    `changes_include` narrows what is sent for each commit. On a shallow
-    clone, the plugin sends no commits and warns instead of failing the lane.
-  - `changes` sends a summary you write yourself.
+- `notify_deploy_qawolf` takes `changes`: the pull requests and commits a
+  deployment ships, each with its title and optionally its description,
+  changed file paths and link, plus release notes. QA Wolf uses it to choose
+  which flows to run without access to your repository. No code is ever sent:
+  there is no place for diffs or file contents, and any other key fails the
+  lane.
+- `collect_changes` and `changes_since` add the commits after `changes_since`
+  from git to `changes`, with their messages and changed file paths, skipping
+  any you already passed. `changes_include` narrows what is sent for each
+  commit. On a shallow clone, the plugin adds no commits and warns instead of
+  failing the lane.
 
-  All of these are off by default, so a lane that sets none of them sends
-  exactly what it sent with 1.2.0.
+All of these are off by default, so a lane that sets none of them sends
+exactly what it sent with 1.2.0.
 
 ## 1.2.0
 

@@ -374,11 +374,15 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       let(:collected_changes) do
         {
           "items" => [
-            { "kind" => "pull-request", "title" => "Add the cart" },
+            pull_request,
             { "changedPaths" => ["app/CartView.swift"], "kind" => "commit", "title" => "Show the cart" },
             { "changedPaths" => ["app/Cart.swift"], "kind" => "commit", "title" => "Add the cart model" }
           ]
         }
+      end
+
+      def pull_request
+        { "kind" => "pull-request", "title" => "Add the cart", "url" => "https://github.com/my-org/my-app/pull/7" }
       end
 
       def refusal_of(extra_params)
@@ -406,33 +410,25 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
       end
 
       it "sends changes given by hand" do
-        described_class.run(params.merge(changes: { items: [{ kind: "commit", title: "Add the cart", changedPaths: ["app/Cart.swift"] }] }))
-        expect(reported_input["changes"]).to eq("items" => [{ "changedPaths" => ["app/Cart.swift"], "kind" => "commit", "title" => "Add the cart" }])
+        described_class.run(params.merge(changes: { items: [{ kind: "pull-request", title: "Add the cart", url: "https://github.com/my-org/my-app/pull/7" }] }))
+        expect(reported_input["changes"]).to eq("items" => [pull_request])
+      end
+
+      it "sends no changes when the changes given by hand hold no items and no release notes" do
+        described_class.run(params.merge(changes: { items: [], omittedCount: 3 }))
+        expect(reported_input).not_to have_key("changes")
       end
 
       it "refuses changes that carry a diff" do
-        expect(refusal_of(changes: { items: [{ kind: "commit", title: "Add the cart", diff: "+ struct Cart {}" }] })).to match(/no field for code, diffs or file contents/)
-      end
-
-      it "sends the pull request's title and description" do
-        described_class.run(params.merge(pull_request_title: "Add the cart", pull_request_description: "Lets shoppers review their cart."))
-        expect(reported_input["changes"]).to eq("items" => [{ "description" => "Lets shoppers review their cart.", "kind" => "pull-request", "title" => "Add the cart" }])
-      end
-
-      it "refuses a pull request description without a title" do
-        expect(refusal_of(pull_request_description: "Details")).to match(/needs `pull_request_title`/)
-      end
-
-      it "refuses changes given by hand alongside collect_changes" do
-        expect(refusal_of(changes: { items: [{ kind: "commit", title: "Add the cart" }] }, collect_changes: true)).to match(/either `changes`/)
+        expect(refusal_of(changes: { items: [{ kind: "commit", title: "Add the cart", diff: "+ struct Cart {}" }] })).to include("no field for code, diffs or file contents")
       end
 
       it "refuses collect_changes without changes_since" do
-        expect(refusal_of(collect_changes: true)).to match(/needs `changes_since`/)
+        expect(refusal_of(collect_changes: true)).to include("needs `changes_since`")
       end
 
-      it "collects the pull request's commits from git after its title" do
-        run_in_repository(collect_changes: true, changes_since: "main", pull_request_title: "Add the cart")
+      it "adds the commits collected from git after the changes given by hand" do
+        run_in_repository(changes: { items: [pull_request] }, collect_changes: true, changes_since: "main")
         expect(reported_input["changes"]).to eq(collected_changes)
       end
 
@@ -458,10 +454,10 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
         expect(Fastlane::UI).to have_received(:important).with(/shallow/)
       end
 
-      it "still sends the pull request's title when no commits can be collected" do
+      it "still sends the changes given by hand when no commits can be collected" do
         allow(Fastlane::UI).to receive(:important)
-        run_in_repository(collect_changes: true, changes_since: "v9.9.9", pull_request_title: "Add the cart")
-        expect(reported_input["changes"]).to eq("items" => [{ "kind" => "pull-request", "title" => "Add the cart" }])
+        run_in_repository(changes: { items: [pull_request] }, collect_changes: true, changes_since: "v9.9.9")
+        expect(reported_input["changes"]).to eq("items" => [pull_request])
       end
     end
 

@@ -46,11 +46,11 @@ module Fastlane
       def self.config_items
         [
           FastlaneCore::ConfigItem.new(key: :changes,
-                                       description: "What the deployment changed, as `{ items: [{ kind:, title:, description:, changedPaths:, url: }], omittedCount:, releaseNotes: }`. There is no field for code, diffs or file contents. Cannot be combined with `collect_changes` or `pull_request_title`",
+                                       description: "What the deployment changed, as `{ items: [{ kind:, title:, description:, changedPaths:, url: }], omittedCount:, releaseNotes: }`, where `kind` is `pull-request` or `commit`. There is no field for code, diffs or file contents",
                                        optional: true,
                                        type: Hash),
           FastlaneCore::ConfigItem.new(key: :collect_changes,
-                                       description: "Collect the changes from the local git history: each commit after `changes_since` up to HEAD, with its message and changed file paths, never diffs or file contents. Off by default. A shallow clone sends no commits and warns",
+                                       description: "Add the commits after `changes_since` up to HEAD from the local git history to `changes`, with their messages and changed file paths, never diffs or file contents. Off by default. A shallow clone adds no commits and warns",
                                        optional: true,
                                        default_value: false,
                                        type: Boolean),
@@ -61,62 +61,64 @@ module Fastlane
           FastlaneCore::ConfigItem.new(key: :changes_include,
                                        description: "What `collect_changes` sends for each commit: `titles`, `descriptions` (the message body) and `paths` (the changed file paths). Defaults to all three",
                                        optional: true,
-                                       type: Array),
-          FastlaneCore::ConfigItem.new(key: :pull_request_title,
-                                       description: "The pull request's title, sent as the first change. Git alone doesn't know it",
-                                       optional: true,
-                                       type: String),
-          FastlaneCore::ConfigItem.new(key: :pull_request_description,
-                                       description: "The pull request's description, sent with `pull_request_title`",
-                                       optional: true,
-                                       type: String)
+                                       type: Array)
         ]
       end
 
-      # What the deployment changed: `changes` as given, or the pull request
-      # followed by the commits collected from git. Nil when none of these is
-      # set, so the report carries no `changes`. Collecting never fails the
-      # lane: when git can't answer, it warns and sends no commits.
+      # What the deployment changed: `changes` as given, followed by the
+      # commits collected from git that it doesn't already hold. Nil when
+      # neither is set, so the report carries no `changes`. Collecting never
+      # fails the lane: when git can't answer, it warns and adds no commits.
       def self.from_options(params, cwd:)
-        pull_request = pull_request_item(params)
-        unless params[:changes].nil?
-          reject_combined(params, pull_request)
-          return validate(params[:changes])
-        end
-
+        given = params[:changes].nil? ? {} : validate(params[:changes])
         collected = params[:collect_changes] ? collected_commits(params, cwd) : nil
-        return nil if pull_request.nil? && collected.nil?
-
-        collected ||= { commits: [], total_count: 0 }
-        changes = summarize(commits: collected[:commits], total_count: collected[:total_count], include: include_levels(params), leading_items: [pull_request].compact)
+        changes = collected.nil? ? given : add_commits(given, collected, include_levels(params))
         return nil unless sent?(changes)
 
-        announce(changes)
+        announce(changes) unless collected.nil?
         return changes
+      end
+
+      def self.add_commits(given, collected, include)
+        given_items = given["items"] || []
+        commits = collected[:commits].reject { |commit| already_given?(commit, given_items) }
+        return summarize(
+          commits: commits,
+          total_count: collected[:total_count] - (collected[:commits].length - commits.length) + (given["omittedCount"] || 0),
+          include: include,
+          leading_items: given_items,
+          release_notes: given["releaseNotes"]
+        )
+      end
+
+      # A commit is already given when an item links to it by its sha, or,
+      # for a merged pull request, by its number.
+      def self.already_given?(commit, items)
+        number = pull_request_number_of(commit)
+        return items.any? do |item|
+          url = item["url"].to_s
+          links_to_sha?(url, commit[:hash]) || (!number.nil? && links_to_pull_request?(url, number))
+        end
+      end
+
+      def self.links_to_sha?(url, hash)
+        return url.scan(/[0-9a-f]{7,64}/i).any? { |token| hash.to_s.start_with?(token.downcase) }
+      end
+
+      def self.links_to_pull_request?(url, number)
+        return %r{/(?:pull|merge_requests)/#{number}(?:[/?#]|\z)}.match?(url)
+      end
+
+      def self.pull_request_number_of(commit)
+        match = commit[:subject].match(/\AMerge pull request #(\d+)/) ||
+                commit[:subject].match(/\(#(\d+)\)\z/) ||
+                commit[:body].match(/^See merge request \S+!(\d+)$/)
+        return match && match[1]
       end
 
       def self.announce(changes)
         omitted = changes["omittedCount"] ? ", #{changes['omittedCount']} more left out to fit the limits" : ""
-        UI.message("🐺 Sending #{changes['items'].length} changes to QA Wolf#{omitted}.")
-      end
-
-      def self.reject_combined(params, pull_request)
-        return unless params[:collect_changes] || !pull_request.nil?
-
-        fail_with("Pass either `changes`, or `collect_changes` and `pull_request_title`, not both. Add the pull request to `changes` yourself.")
-      end
-
-      def self.pull_request_item(params)
-        title = present(params[:pull_request_title])
-        description = present(params[:pull_request_description])
-        fail_with("`pull_request_description` needs `pull_request_title`, because every change needs a title.") if title.nil? && !description.nil?
-        return nil if title.nil?
-
-        return {
-          "description" => description.nil? ? nil : cut(description, MAX_DESCRIPTION_LENGTH),
-          "kind" => "pull-request",
-          "title" => cut(title, MAX_TITLE_LENGTH)
-        }.compact
+        UI.message("🐺 Sending #{(changes['items'] || []).length} changes to QA Wolf#{omitted}.")
       end
 
       def self.collected_commits(params, cwd)
@@ -147,9 +149,8 @@ module Fastlane
       end
 
       # Checks a `changes` hash given by hand against the API's shape and
-      # limits, and returns it with string keys and trimmed text. Returns nil
-      # when it holds no items and no release notes, which the API treats as
-      # not sent.
+      # limits, and returns it with string keys and trimmed text. A blank
+      # optional text counts as absent.
       def self.validate(changes)
         fail_with("`changes` must be a hash with `items`, `omittedCount` or `releaseNotes`.") unless changes.kind_of?(Hash)
 
@@ -161,7 +162,7 @@ module Fastlane
         }.compact
         fail_with("`changes` must be at most 256 KB.") if byte_length(normalized) > MAX_BYTES
 
-        return sent?(normalized) ? normalized : nil
+        return normalized
       end
 
       def self.validate_items(items)
@@ -233,7 +234,7 @@ module Fastlane
       end
 
       def self.optional_text(value, max, path)
-        return nil if value.nil?
+        return nil if value.nil? || (value.kind_of?(String) && value.strip.empty?)
 
         return text(value, max, path)
       end
@@ -296,9 +297,10 @@ module Fastlane
         tokens = stdout.split("\0", -1)
         starts = record_starts(tokens)
         return starts.each_with_index.map do |start, position|
-          _hash, subject, body, _separator, *paths = tokens[start...(starts[position + 1] || tokens.length)]
+          hash, subject, body, _separator, *paths = tokens[start...(starts[position + 1] || tokens.length)]
           {
             body: body.to_s.strip,
+            hash: hash,
             paths: paths.map { |path| path.delete_prefix("\n") }.reject(&:empty?),
             subject: subject.to_s.strip
           }
@@ -314,10 +316,10 @@ module Fastlane
       end
 
       # The summary of `leading_items` followed by the commits, newest first,
-      # within the API's limits. `commits` may be the newest part of a range of
-      # `total_count`; every change left out, there or to fit, is counted in
-      # `omittedCount`.
-      def self.summarize(commits:, total_count:, include:, leading_items: [])
+      # and `release_notes`, within the API's limits. `commits` may be the
+      # newest part of a range of `total_count`; every change left out, there
+      # or to fit, is counted in `omittedCount`.
+      def self.summarize(commits:, total_count:, include:, leading_items: [], release_notes: nil)
         commit_items = commits
                        .reject { |commit| commit[:subject].empty? }
                        .map { |commit| commit_item(commit, descriptions: include.include?("descriptions"), paths: include.include?("paths")) }
@@ -327,7 +329,8 @@ module Fastlane
           omitted_count = total - count
           {
             "items" => count > 0 ? items.first(count) : nil,
-            "omittedCount" => omitted_count > 0 ? omitted_count : nil
+            "omittedCount" => omitted_count > 0 ? omitted_count : nil,
+            "releaseNotes" => release_notes
           }.compact
         end
         kept = largest_fitting_count([items.length, MAX_ITEMS].min) { |count| byte_length(summary_of.call(count)) <= MAX_BYTES }

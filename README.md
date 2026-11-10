@@ -189,13 +189,21 @@ Builds must be turned on for your workspace. Until they are, the upload fails wi
 
 ## Telling QA Wolf what changed
 
-When QA Wolf chooses which flows to run for a deployment, it reads what the deployment changed. If QA Wolf can't read your repository, `notify_deploy_qawolf` can send that summary itself: each pull request or commit with its title, and optionally its description and the paths of the files it changed. **No code is ever sent.** There is no place for diffs or file contents in the summary, and the plugin never reads them.
+When QA Wolf chooses which flows to run for a deployment, it reads what the deployment changed. If QA Wolf can't read your repository, `notify_deploy_qawolf` can send that summary itself: the pull requests and commits the deployment ships, each with its title, and optionally its description, the paths of the files it changed and a link. **No code is ever sent.** There is no place for diffs or file contents in the summary, and the plugin never reads them.
 
-You don't need any of this if QA Wolf already has access to your repository. Nothing is sent unless you set one of the options below.
+You don't need any of this if QA Wolf already has access to your repository. Nothing is sent unless you pass `changes` or turn on `collect_changes`.
+
+`changes` takes the summary as QA Wolf's API reads it:
+
+- `items`: the pull requests and commits, newest first, at most 250. Each has a `kind` (`"pull-request"` or `"commit"`) and a `title`, and optionally a `description`, `changedPaths` (at most 1,000) and an http(s) `url`. A blank `description` is left out.
+- `releaseNotes`: notes written for the release.
+- `omittedCount`: how many pull requests or commits you left out.
+
+Any other key, such as `diff`, fails the lane before anything is sent. The whole summary is at most 256 KB.
 
 ### A pull request build
 
-Upload the build into the pull request's preview environment, then report the deployment with the pull request's title and description and the commits it adds:
+Upload the build into the pull request's preview environment, then report the deployment with the pull request as its one change:
 
 ```ruby
 lane :pull_request do
@@ -212,14 +220,17 @@ lane :pull_request do
         service: "ios-app",
         repository: "my-org/my-app",
         pull_request_number: ENV.fetch("PR_NUMBER").to_i,
-
-        # Git doesn't know the pull request's title and description, so pass
-        # them in from your CI.
-        pull_request_title: ENV.fetch("PR_TITLE", nil),
-        pull_request_description: ENV.fetch("PR_BODY", nil),
-
-        # Adds each commit since the base branch, with its message and the
-        # paths of the files it changed.
+        changes: {
+            items: [
+                {
+                    kind: "pull-request",
+                    title: ENV.fetch("PR_TITLE"),
+                    description: ENV.fetch("PR_BODY", nil),
+                    url: ENV.fetch("PR_URL"),
+                },
+            ],
+        },
+        # Adds the pull request's commits, with the paths of the files they changed.
         collect_changes: true,
         changes_since: "origin/main",
     )
@@ -238,40 +249,48 @@ On GitHub Actions, pass the pull request's details into the job, and check out t
     PR_NUMBER: ${{ github.event.pull_request.number }}
     PR_TITLE: ${{ github.event.pull_request.title }}
     PR_BODY: ${{ github.event.pull_request.body }}
+    PR_URL: ${{ github.event.pull_request.html_url }}
 ```
 
-### Collecting from git
+### A release build
 
-With `collect_changes: true`, the plugin reads each commit after `changes_since` up to the checked-out commit, following the branch's own line of history (the first parent of each merge). `changes_since` is the commit, tag or branch the environment ran before: the base branch for a pull request build, or the previous release tag for a release, e.g. `v1.2.0`.
-
-- A merge commit for a GitHub pull request or GitLab merge request, and a GitHub squash-merge commit (its subject ends in `(#123)`), is sent as a pull request, titled from its message. Any other commit is sent as a commit.
-- `changes_include` picks what is sent for each commit: `titles`, `descriptions` (the rest of the message) and `paths` (the changed file paths). All three by default.
-- At most the 250 newest commits are sent, and a commit sends as many paths as fit QA Wolf's size limits. Anything left out is counted, so QA Wolf knows the list is partial.
-- A shallow clone, which most CI systems check out by default, may not hold every commit in the range. Rather than send part of it, the plugin sends no commits, prints a warning and carries on: the deployment is still reported and the lane doesn't fail. Fetch the full history to fix it, e.g. `fetch-depth: 0` on `actions/checkout` or `git fetch --unshallow`. The same goes for a `changes_since` that names no commit, such as a tag that wasn't fetched.
-
-### Writing the summary yourself
-
-To send exactly what you choose, pass `changes` instead. It takes `items` (newest first, at most 250), `omittedCount` and `releaseNotes`:
+A release ships several merged pull requests. List them, newest first, with the release notes:
 
 ```ruby
 notify_deploy_qawolf(
     environment: "Production",
+    service: "ios-app",
     changes: {
         items: [
             {
-                kind: "pull-request", # or "commit"
+                kind: "pull-request",
                 title: "Recalculate the cart total with discounts",
                 description: "Discount codes now apply before tax.",
                 changedPaths: ["app/Cart/Total.swift"],
-                url: "https://github.com/my-org/my-app/pull/123",
+                url: "https://github.com/my-org/my-app/pull/124",
+            },
+            {
+                kind: "pull-request",
+                title: "Show saved cards at checkout",
+                url: "https://github.com/my-org/my-app/pull/121",
             },
         ],
-        releaseNotes: "Discounts now apply before tax.",
+        releaseNotes: "Discounts now apply before tax, and saved cards show at checkout.",
     },
 )
 ```
 
-Any other key, such as `diff`, fails the lane before anything is sent. `changes` can't be combined with `collect_changes` or `pull_request_title`; add the pull request to `items` yourself.
+Or let the plugin find them: with `collect_changes: true` and `changes_since: "v1.2.0"` (the previous release's tag), it adds every merged pull request and commit since that tag.
+
+### Collecting from git
+
+With `collect_changes: true`, the plugin reads each commit after `changes_since` up to the checked-out commit, following the branch's own line of history (the first parent of each merge), and adds them after the items you passed in `changes`. `changes_since` is the commit, tag or branch the environment ran before: the base branch for a pull request build, or the previous release's tag for a release.
+
+- A merge commit for a GitHub pull request or GitLab merge request, and a GitHub squash-merge commit (its subject ends in `(#123)`), is added as a pull request, titled from its message. Any other commit is added as a commit.
+- A commit you already passed is not added twice: one whose sha appears in an item's `url`, or a merged pull request whose number appears in an item's `url` (`/pull/123` or `/merge_requests/123`).
+- `changes_include` picks what is sent for each commit: `titles`, `descriptions` (the rest of the message) and `paths` (the changed file paths). All three by default.
+- The items you pass are always kept. Commits fill the room left within the limits: at most 250 items in all, and as many paths per commit as fit. Anything left out is counted in `omittedCount`, so QA Wolf knows the list is partial.
+- A shallow clone, which most CI systems check out by default, may not hold every commit in the range. Rather than send part of it, the plugin adds no commits, prints a warning and carries on: the deployment is still reported, with the `changes` you passed, and the lane doesn't fail. Fetch the full history to fix it, e.g. `fetch-depth: 0` on `actions/checkout` or `git fetch --unshallow`. The same goes for a `changes_since` that names no commit, such as a tag that wasn't fetched.
 
 Send the summary on the deployment's first `success` report, or earlier: that is the report that starts runs. A later report that sends a summary replaces the earlier one, and a report that sends none keeps it.
 
@@ -325,12 +344,10 @@ Use `upload_build_to_qawolf` instead; see [Moving from `upload_to_qawolf`](#movi
 | `repository` | no | The repository's full path, e.g. `my-org/my-app`, or `my-group/my-subgroup/my-app` for a GitLab project in a subgroup. Required with a PR/MR number. |
 | `pull_request_number` | no | The GitHub pull request number. Requires `repository`. A build outside a pull request reports none. |
 | `merge_request_number` | no | The GitLab merge request number. Requires `repository`. |
-| `pull_request_title` | no | The pull request's title, sent as the first change. See [Telling QA Wolf what changed](#telling-qa-wolf-what-changed). |
-| `pull_request_description` | no | The pull request's description, sent with `pull_request_title`. |
-| `collect_changes` | no | Collect the changes from git: each commit after `changes_since`, with its message and changed file paths. Never diffs or file contents. Off by default. |
+| `changes` | no | The pull requests and commits the deployment ships, and its release notes. See [Telling QA Wolf what changed](#telling-qa-wolf-what-changed). |
+| `collect_changes` | no | Add the commits after `changes_since` from git to `changes`, with their messages and changed file paths. Never diffs or file contents. Off by default. |
 | `changes_since` | no | The commit, tag or branch the environment ran before, e.g. `origin/main`. Required with `collect_changes`. |
 | `changes_include` | no | What `collect_changes` sends for each commit: any of `titles`, `descriptions` and `paths`. Defaults to all three. |
-| `changes` | no | The summary of what changed, written yourself. Can't be combined with `collect_changes` or `pull_request_title`. |
 | `variables` | no | Key-value pairs exposed as `process.env` in the runs this deployment requests. |
 | `qawolf_base_url` | no | Override the QA Wolf base URL. Also read from `QAWOLF_BASE_URL`. |
 

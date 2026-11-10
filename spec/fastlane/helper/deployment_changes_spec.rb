@@ -3,8 +3,8 @@ require_relative '../../support/git_repository'
 describe Fastlane::Helper::DeploymentChanges do
   let(:all_levels) { %w[titles descriptions paths] }
 
-  def commit(subject, body: "", paths: [])
-    { body: body, paths: paths, subject: subject }
+  def commit(subject, body: "", paths: [], hash: "0123456789abcdef0123456789abcdef01234567")
+    { body: body, hash: hash, paths: paths, subject: subject }
   end
 
   def summarize(commits, total_count: commits.length, include: all_levels)
@@ -141,6 +141,37 @@ describe Fastlane::Helper::DeploymentChanges do
     end
   end
 
+  describe ".add_commits" do
+    let(:sha) { "89abcdef0123456789abcdef0123456789abcdef" }
+    let(:merged) { commit("Merge pull request #7 from my-org/cart", body: "Add the cart") }
+    let(:given) { { "items" => [{ "kind" => "pull-request", "title" => "Add the cart", "url" => "https://github.com/my-org/my-app/pull/7" }], "releaseNotes" => "Cart" } }
+
+    def add(commits, given_changes = given, total_count: commits.length)
+      described_class.add_commits(given_changes, { commits: commits, total_count: total_count }, %w[titles])
+    end
+
+    it "puts the collected commits after the given items and keeps the release notes" do
+      expect(add([commit("Fix the total")])).to eq(given.merge("items" => given["items"] + [{ "kind" => "commit", "title" => "Fix the total" }]))
+    end
+
+    it "skips a merged pull request an item already links to" do
+      expect(add([merged])["items"]).to eq(given["items"])
+    end
+
+    it "skips a commit an item already links to by its short sha" do
+      linked = { "items" => [{ "kind" => "commit", "title" => "Fix the total", "url" => "https://github.com/my-org/my-app/commit/89abcde" }] }
+      expect(add([commit("Fix the total", hash: sha)], linked)["items"].length).to eq(1)
+    end
+
+    it "keeps a commit no item links to" do
+      expect(add([commit("Fix the total", hash: sha), merged], { "items" => [] })["items"].length).to eq(2)
+    end
+
+    it "adds the given omitted count to the commits it did not read" do
+      expect(add([commit("Fix the total")], given.merge("omittedCount" => 3), total_count: 5)["omittedCount"]).to eq(7)
+    end
+  end
+
   describe ".validate" do
     def refusal_of(changes)
       described_class.validate(changes)
@@ -154,35 +185,35 @@ describe Fastlane::Helper::DeploymentChanges do
     end
 
     it "refuses a key for code or diffs" do
-      expect(refusal_of(items: [{ kind: "commit", title: "Add the cart", diff: "+ let total = 1" }])).to match(/unknown keys: diff/)
+      expect(refusal_of(items: [{ kind: "commit", title: "Add the cart", diff: "+ let total = 1" }])).to include("unknown keys: diff")
     end
 
     it "refuses an unknown top-level key" do
-      expect(refusal_of(files: { "app/Cart.swift" => "struct Cart {}" })).to match(/unknown keys: files/)
+      expect(refusal_of(files: { "app/Cart.swift" => "struct Cart {}" })).to include("unknown keys: files")
     end
 
     it "refuses an unknown kind" do
-      expect(refusal_of(items: [{ kind: "merge", title: "Add the cart" }])).to match(/kind` must be one of/)
+      expect(refusal_of(items: [{ kind: "merge", title: "Add the cart" }])).to include("kind` must be one of")
     end
 
     it "refuses a title over the limit" do
-      expect(refusal_of(items: [{ kind: "commit", title: "a" * 513 }])).to match(/title` must be at most 512/)
+      expect(refusal_of(items: [{ kind: "commit", title: "a" * 513 }])).to include("title` must be at most 512")
     end
 
     it "refuses a blank title" do
-      expect(refusal_of(items: [{ kind: "commit", title: "  " }])).to match(/title` must be a non-empty string/)
+      expect(refusal_of(items: [{ kind: "commit", title: "  " }])).to include("title` must be a non-empty string")
     end
 
     it "refuses more than 250 items" do
-      expect(refusal_of(items: Array.new(251) { { kind: "commit", title: "Commit" } })).to match(/at most 250/)
+      expect(refusal_of(items: Array.new(251) { { kind: "commit", title: "Commit" } })).to include("at most 250")
     end
 
     it "refuses a url that is not http" do
-      expect(refusal_of(items: [{ kind: "commit", title: "Add the cart", url: "ftp://example.com" }])).to match(/url` must be an http/)
+      expect(refusal_of(items: [{ kind: "commit", title: "Add the cart", url: "ftp://example.com" }])).to include("url` must be an http")
     end
 
-    it "treats a summary with no items and no release notes as not sent" do
-      expect(described_class.validate(items: [], omittedCount: 3)).to be_nil
+    it "treats a blank description as absent" do
+      expect(described_class.validate(items: [{ kind: "pull-request", title: "Add the cart", description: " " }])).to eq("items" => [{ "kind" => "pull-request", "title" => "Add the cart" }])
     end
   end
 end
