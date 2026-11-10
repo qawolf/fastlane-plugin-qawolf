@@ -7,6 +7,34 @@
 #import <UIKit/UIKit.h>
 #import "../QWAudioConvert.h"
 #import "../audiounit/QWAudioUnitBridge.h"
+#import <objc/runtime.h>
+
+#pragma mark - Video delegate delivery
+
+static const void *kQAWVideoDeliveryInFlightKey = &kQAWVideoDeliveryInFlightKey;
+
+BOOL QAWVideoDeliveryInFlight(AVCaptureVideoDataOutput *output) {
+    return [objc_getAssociatedObject(output, kQAWVideoDeliveryInFlightKey) boolValue];
+}
+
+void QAWDeliverVideoSampleBuffer(AVCaptureVideoDataOutput *output,
+                                 id<AVCaptureVideoDataOutputSampleBufferDelegate> delegate,
+                                 dispatch_queue_t queue,
+                                 CMSampleBufferRef sampleBuffer) {
+    // AVFoundation never pairs a delegate with a nil queue; drop rather than call off-queue.
+    if (!queue) return;
+    // Only the display-link thread sets the flag, so check-then-set does not race.
+    if (QAWVideoDeliveryInFlight(output)) return;
+    objc_setAssociatedObject(output, kQAWVideoDeliveryInFlightKey, @YES, OBJC_ASSOCIATION_RETAIN);
+    CFRetain(sampleBuffer);
+    dispatch_async(queue, ^{
+        [delegate captureOutput:output
+          didOutputSampleBuffer:sampleBuffer
+                 fromConnection:[output connectionWithMediaType:AVMediaTypeVideo]];
+        CFRelease(sampleBuffer);
+        objc_setAssociatedObject(output, kQAWVideoDeliveryInFlightKey, nil, OBJC_ASSOCIATION_RETAIN);
+    });
+}
 
 // File-scope log counters — reset in stopMediaPlayback so each recording session logs diagnostics
 static int sAudioDeliverWaitCount = 0;
@@ -1000,7 +1028,10 @@ static void audioTapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrame
     // Push to video capture delegate (AVCaptureVideoDataOutput push mode)
     id<AVCaptureVideoDataOutputSampleBufferDelegate> captureDelegate = self.videoCaptureDelegate;
     AVCaptureVideoDataOutput *captureOutput = self.videoCaptureOutput;
-    if (captureDelegate && captureOutput) {
+    // Read with the delegate: registerVideoCaptureDelegate: can clear it from another thread.
+    dispatch_queue_t captureQueue = self.videoCaptureQueue;
+    // While the app still holds the previous frame, skip: the next render reuses its buffer.
+    if (captureDelegate && captureOutput && captureQueue && !QAWVideoDeliveryInFlight(captureOutput)) {
         CVPixelBufferRef srcPixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
         if (srcPixelBuffer) {
             // Lazy target-size detection: setSampleBufferDelegate: is often called
@@ -1302,11 +1333,8 @@ static void audioTapProcess(MTAudioProcessingTapRef tap, CMItemCount numberFrame
                         CFDictionarySetValue(dict, kCMSampleAttachmentKey_DisplayImmediately, kCFBooleanTrue);
                     }
 
-                    AVCaptureConnection *connection = [captureOutput connectionWithMediaType:AVMediaTypeVideo];
-
-                    [captureDelegate captureOutput:captureOutput
-                             didOutputSampleBuffer:captureSampleBuffer
-                                    fromConnection:connection];
+                    QAWDeliverVideoSampleBuffer(captureOutput, captureDelegate,
+                                                captureQueue, captureSampleBuffer);
                     CFRelease(captureSampleBuffer);
                 }
             }

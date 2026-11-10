@@ -203,4 +203,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+/// YES while an injected frame for this output waits on the app's queue.
+BOOL QAWVideoDeliveryInFlight(AVCaptureVideoDataOutput *output);
+
+/// Calls the app's video delegate on its own queue, as AVFoundation does. Skips the
+/// frame while the previous one is still queued. A nil queue drops the frame.
+void QAWDeliverVideoSampleBuffer(AVCaptureVideoDataOutput *output,
+                                 id<AVCaptureVideoDataOutputSampleBufferDelegate> delegate,
+                                 dispatch_queue_t _Nullable queue,
+                                 CMSampleBufferRef sampleBuffer);
+
 NS_ASSUME_NONNULL_END
