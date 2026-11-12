@@ -12,7 +12,7 @@ module Fastlane
       REPORT_DEPLOYMENT_ENDPOINT = "/api/trpc/public.deployment.reportStatus"
       REQUEST_BUILD_UPLOAD_ENDPOINT = "/api/trpc/public.build.requestUpload"
       CREATE_BUILD_ENDPOINT = "/api/trpc/public.build.create"
-      # Matches the QA Wolf CI SDK: a 500 MB build on a slow connection outlasts
+      # Matches the QA Wolf CI SDK: a large build on a slow connection outlasts
       # RestClient's default timeout.
       BUILD_UPLOAD_TIMEOUT_SECONDS = 30 * 60
 
