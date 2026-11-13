@@ -117,6 +117,15 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
       expect(Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::QAWOLF_BUILD_IDS]).to eq(["zyxwvutsrqponmlkjihgfedcobld", build_id])
     end
 
+    context "with a Linux Electron build" do
+      let(:file_path) { write_file("my-app_1.0.0_amd64.deb", "deb bytes") }
+
+      it "uploads it" do
+        run_with_stubs(params)
+        expect(sent_input(request_upload_url)["fileName"]).to eq("my-app_1.0.0_amd64.deb")
+      end
+    end
+
     context "with spaces in the file name" do
       let(:file_path) { write_file("My App.ipa", "ipa bytes") }
 
@@ -205,7 +214,7 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
       {
         "no file_path" => [-> { { file_path: nil } }, /file_path/],
         "a missing file" => [-> { { file_path: "/does/not/exist.apk" } }, /No file found/],
-        "an unsupported file extension" => [-> { { file_path: write_file("app.zip", "zip bytes") } }, /\.apk, \.aab or \.ipa/],
+        "an unsupported file extension" => [-> { { file_path: write_file("app.zip", "zip bytes") } }, /\.apk, \.aab, \.ipa, \.deb or \.rpm/],
         "a file name QA Wolf can't store" => [-> { { file_path: write_file("app(1).apk", "apk bytes") } }, /letters, digits/],
         "an empty file" => [-> { { file_path: write_file("app.apk", "") } }, /empty/],
         "both environment and environment_id" => [-> { { environment_id: "env_1" } }, /environment_id/],
