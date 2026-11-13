@@ -13,7 +13,6 @@ module Fastlane
     # Casing is important for the action name!
     class UploadBuildToQawolfAction < Action
       SUPPORTED_FILE_EXTENSIONS = %w[apk aab ipa]
-      MAX_FILE_BYTES = 500 * 1024 * 1024
       FILE_NAME_PATTERN = /\A[A-Za-z0-9._-]{1,255}\z/
 
       def self.run(params)
@@ -81,7 +80,6 @@ module Fastlane
       def self.file_size(file_path)
         size = File.size(file_path)
         UI.user_error!("🐺 The file at '#{file_path}' is empty.") if size.zero?
-        UI.user_error!("🐺 The file at '#{file_path}' is over 500 MB, the largest build QA Wolf accepts.") if size > MAX_FILE_BYTES
 
         return size
       end
@@ -187,7 +185,7 @@ module Fastlane
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :file_path,
-                                       description: "Path to the .apk, .aab or .ipa file, at most 500 MB. Defaults to the file gym or gradle built earlier in the lane",
+                                       description: "Path to the .apk, .aab or .ipa file, at most 1 GB by default. Defaults to the file gym or gradle built earlier in the lane",
                                        optional: true,
                                        type: String),
           # Read from QAWOLF_ENVIRONMENT in `run`, so an explicit

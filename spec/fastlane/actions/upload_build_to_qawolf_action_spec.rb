@@ -117,6 +117,25 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
       expect(Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::QAWOLF_BUILD_IDS]).to eq(["zyxwvutsrqponmlkjihgfedcobld", build_id])
     end
 
+    context "with a file larger than QA Wolf accepts" do
+      let(:size) { (1024 * 1024 * 1024) + 1 }
+
+      before do
+        allow(File).to receive(:size).and_call_original
+        allow(File).to receive(:size).with(file_path).and_return(size)
+        stub_request(:post, request_upload_url).to_return(
+          status: 400,
+          body: { error: { json: { message: "The build is over 1 GB, the largest build this workspace accepts." } } }.to_json
+        )
+      end
+
+      it "leaves the limit to QA Wolf and uploads nothing", :aggregate_failures do
+        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /over 1 GB/)
+        expect(sent_input(request_upload_url)["fileSizeBytes"]).to eq(size)
+        expect(a_request(:put, upload_url)).not_to have_been_made
+      end
+    end
+
     context "with spaces in the file name" do
       let(:file_path) { write_file("My App.ipa", "ipa bytes") }
 
@@ -217,13 +236,6 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
           expect { described_class.run(params.merge(instance_exec(&overrides))) }.to raise_error(FastlaneCore::Interface::FastlaneError, message)
           expect(a_request(:any, /.*/)).not_to have_been_made
         end
-      end
-
-      it "fails with a file over 500 MB, sending nothing", :aggregate_failures do
-        allow(File).to receive(:size).and_call_original
-        allow(File).to receive(:size).with(file_path).and_return((500 * 1024 * 1024) + 1)
-        expect { described_class.run(params) }.to raise_error(FastlaneCore::Interface::FastlaneError, /500 MB/)
-        expect(a_request(:any, /.*/)).not_to have_been_made
       end
     end
   end

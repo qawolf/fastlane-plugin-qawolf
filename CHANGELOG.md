@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1
+
+### Changed
+
+- `upload_build_to_qawolf` no longer refuses files over 500 MB itself. QA Wolf
+  checks the size and accepts builds up to the workspace's limit, 1 GB by
+  default.
+
 ## 1.2.0
 
 ### Added
