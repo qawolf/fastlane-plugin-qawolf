@@ -193,7 +193,7 @@ Builds must be turned on for your workspace. Until they are, the upload fails wi
 | --- | --- | --- |
 | `qawolf_api_key` | yes | Your QA Wolf API key. Also read from `QAWOLF_API_KEY`. |
 | `workspace_id` | no | The workspace to upload into. Also read from `QAWOLF_WORKSPACE_ID`. Required with an organization or user API key. A team API key needs none. |
-| `file_path` | no | The `.apk`, `.aab` or `.ipa` file, at most 500 MB. Defaults to the file gym or gradle built earlier in the lane. Spaces in its name become dashes. |
+| `file_path` | no | The `.apk`, `.aab` or `.ipa` file, or a Linux Electron `.deb` or `.rpm`, at most 500 MB. Defaults to the file gym or gradle built earlier in the lane. Spaces in its name become dashes. |
 | `environment` | no | The name or alias of the environment whose runs install the build from now on. Defaults to `QAWOLF_ENVIRONMENT`. **A value that matches no environment creates one.** |
 | `environment_id` | no | The ID of an existing environment, instead of `environment`. |
 | `ephemeral_environment` | no | When `environment` names no environment yet, create it as a preview environment. |
