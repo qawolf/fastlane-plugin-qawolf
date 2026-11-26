@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- `upload_build_to_qawolf` uploads Mac builds, a `.zip` of the `.app`, such as
+  electron-builder's `-mac.zip`. Desktop builds must be turned on for the
+  workspace.
+
 ## 1.3.1
 
 ### Changed

@@ -12,7 +12,7 @@ module Fastlane
 
     # Casing is important for the action name!
     class UploadBuildToQawolfAction < Action
-      SUPPORTED_FILE_EXTENSIONS = %w[apk aab ipa deb rpm]
+      SUPPORTED_FILE_EXTENSIONS = %w[apk aab ipa deb rpm zip]
       FILE_NAME_PATTERN = /\A[A-Za-z0-9._-]{1,255}\z/
 
       def self.run(params)
@@ -66,7 +66,7 @@ module Fastlane
 
         extension = File.extname(file_path).delete_prefix('.').downcase
         unless SUPPORTED_FILE_EXTENSIONS.include?(extension)
-          UI.user_error!("🐺 A build is an .apk, .aab, .ipa, .deb or .rpm file, not '#{File.basename(file_path)}'.")
+          UI.user_error!("🐺 A build is an .apk, .aab, .ipa, .deb, .rpm or Mac .zip file, not '#{File.basename(file_path)}'.")
         end
 
         file_name = File.basename(file_path).tr(' ', '-')
@@ -145,7 +145,7 @@ module Fastlane
       end
 
       def self.description
-        "Uploads an app build (.apk, .aab, .ipa, or a Linux Electron .deb or .rpm) to QA Wolf."
+        "Uploads an app build (.apk, .aab, .ipa, a Linux Electron .deb or .rpm, or a Mac .zip of the .app) to QA Wolf."
       end
 
       def self.authors
@@ -185,7 +185,7 @@ module Fastlane
                                        optional: true,
                                        type: String),
           FastlaneCore::ConfigItem.new(key: :file_path,
-                                       description: "Path to the .apk, .aab, .ipa, .deb or .rpm file, at most 1 GB by default. Defaults to the file gym or gradle built earlier in the lane",
+                                       description: "Path to the .apk, .aab, .ipa, .deb, .rpm or Mac .zip file, at most 1 GB by default. Defaults to the file gym or gradle built earlier in the lane",
                                        optional: true,
                                        type: String),
           # Read from QAWOLF_ENVIRONMENT in `run`, so an explicit
