@@ -79,6 +79,10 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
     ENV.delete("QAWOLF_BUILD_ID")
   end
 
+  it "runs in iOS, Android and Mac lanes" do
+    expect([:ios, :android, :mac].map { |platform| described_class.is_supported?(platform) }).to all(be(true))
+  end
+
   describe "#run" do
     it "returns the created build" do
       expect(run_with_stubs(params)).to eq(build)
