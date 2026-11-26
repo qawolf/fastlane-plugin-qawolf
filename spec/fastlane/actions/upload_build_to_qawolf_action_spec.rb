@@ -79,6 +79,10 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
     ENV.delete("QAWOLF_BUILD_ID")
   end
 
+  it "runs in iOS, Android and Mac lanes" do
+    expect([:ios, :android, :mac].map { |platform| described_class.is_supported?(platform) }).to all(be(true))
+  end
+
   describe "#run" do
     it "returns the created build" do
       expect(run_with_stubs(params)).to eq(build)
@@ -123,6 +127,15 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
       it "uploads it" do
         run_with_stubs(params)
         expect(sent_input(request_upload_url)["fileName"]).to eq("my-app_1.0.0_amd64.deb")
+      end
+    end
+
+    context "with a Mac build" do
+      let(:file_path) { write_file("My-App-1.0.0-arm64-mac.zip", "zip bytes") }
+
+      it "uploads it" do
+        run_with_stubs(params)
+        expect(sent_input(request_upload_url)["fileName"]).to eq("My-App-1.0.0-arm64-mac.zip")
       end
     end
 
@@ -233,7 +246,7 @@ describe Fastlane::Actions::UploadBuildToQawolfAction do
       {
         "no file_path" => [-> { { file_path: nil } }, /file_path/],
         "a missing file" => [-> { { file_path: "/does/not/exist.apk" } }, /No file found/],
-        "an unsupported file extension" => [-> { { file_path: write_file("app.zip", "zip bytes") } }, /\.apk, \.aab, \.ipa, \.deb or \.rpm/],
+        "an unsupported file extension" => [-> { { file_path: write_file("app.dmg", "dmg bytes") } }, /\.apk, \.aab, \.ipa, \.deb, \.rpm or Mac \.zip/],
         "a file name QA Wolf can't store" => [-> { { file_path: write_file("app(1).apk", "apk bytes") } }, /letters, digits/],
         "an empty file" => [-> { { file_path: write_file("app.apk", "") } }, /empty/],
         "both environment and environment_id" => [-> { { environment_id: "env_1" } }, /environment_id/],

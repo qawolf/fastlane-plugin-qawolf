@@ -36,6 +36,10 @@ describe Fastlane::Actions::NotifyDeployQawolfAction do
     JSON.parse(request.body)["json"]
   end
 
+  it "runs in iOS, Android and Mac lanes" do
+    expect([:ios, :android, :mac].map { |platform| described_class.is_supported?(platform) }).to all(be(true))
+  end
+
   describe "#run" do
     let(:required_input) do
       {
